@@ -2,7 +2,7 @@
 #**FILE SERVER**
 
 ###*Configuration Instructions -*
-      LevelDB - [Get LevelDB] (go get github.com/syndtr/goleveldb/leveldb)
+      LevelDB - [Get LevelDB](go get github.com/syndtr/goleveldb/leveldb)
 
 ###*Operating Instructions -*
 ####    - Running Program -
@@ -36,6 +36,13 @@
   * Muli-version - not done.
   * Rename - not done.
   * Delete - not working.
+  
+### *REFERANCE CODE -*
+
+  * [Build Web Application with Golang](https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/08.0.html)
+  * [Network programming with Go](https://jan.newmarch.name/go/)
+  * [Syndtr/goLevelDB](https://godoc.org/github.com/syndtr/goleveldb/leveldb)
+  * STACK OVERFLOW 
   
 
 
