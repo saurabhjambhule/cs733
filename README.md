@@ -5,7 +5,7 @@
       LevelDB - [Get LevelDB](go get github.com/syndtr/goleveldb/leveldb)
 
 ###*Operating Instructions -*
-####    - Running Program -
+####    - Running Program :
           1. Run SERVER : go run server.go
           2. Run CLIENT : go run client.go
  
@@ -23,7 +23,7 @@
           1. Sigle Client - Serves only single client at a time.
           2. Multi Client - Supports multiple client request.
   
-####     - Error Messages
+####     - Error Messages :
           1. ERR_VERSION - The contents were not updated because of a version mismatch.
           2. ERR_FILE_NOT_FOUND - The filename doesn’t exist.
           3. ERR_CMD_ERR - The command is not formatted correctly.
@@ -36,13 +36,15 @@
   * Muli-version - not done.
   * Rename - not done.
   * Delete - not working.
+  * Code Documentation - not done.
+  * Test Case - not done.
   
 ### *REFERANCE CODE -*
 
   * [Build Web Application with Golang](https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/08.0.html)
   * [Network programming with Go](https://jan.newmarch.name/go/)
   * [Syndtr/goLevelDB](https://godoc.org/github.com/syndtr/goleveldb/leveldb)
-  * STACK OVERFLOW 
+  * *STACK OVERFLOW* 
   
 
 
