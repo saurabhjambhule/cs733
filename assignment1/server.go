@@ -500,7 +500,6 @@ func deleteFile(cmd []string, cmdLen int) (resp string){
     return "OK"
 }
 
-
 func main() {
 
     reader := bufio.NewReader(os.Stdin)
