@@ -29,7 +29,7 @@
           3. ERR_CMD_ERR - The command is not formatted correctly.
           4. ERR_INTERNAL - Any other error you wish to report that is not covered by the rest.
 
-### *UNCOMPLETE CODE -*
+### *INCOMPLETE CODE -*
   
   * Multi Client - partialy runs.
   * Expire Time - not done.
