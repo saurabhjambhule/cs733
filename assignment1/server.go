@@ -3,20 +3,22 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 /**
  * Structre : DBData
  * Contains metadata and contents of the file .
  **/
+
 type DBData struct {
 	Vers  int
 	Cont  string
