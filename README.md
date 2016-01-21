@@ -12,32 +12,24 @@
 ####     - Client Side Menu :
       
           1. Write - Create a File, or update the file’s contents if it already exists.
+                  write <filename> <numbytes> [<exptime>]\r\n
+                  <content bytes>\r\n
           2. Read - Given a Filename, retrieve the corresponding file.
+                  read <filename>\r\n
           3. Compare & Swap - This replaces the old file contents with the new content provided the version is still the same.
+                  cas <filename> <version> <numbytes> [<exptime>]\r\n
+                  <content bytes>\r\n
           4. Append - This appends the old file contents with the new content provided the version changes.
-          5. Rename - Rename File.
-          6. Delete - Delete File.
-  
-  
-####     - Server Side Menu :
-          1. Sigle Client - Serves only single client at a time.
-          2. Multi Client - Supports multiple client request.
+                  append <filename> <bytes>
+                  <content bytes>\r\n
+          5. Delete - Delete File.
+                  delete <filename>\r\n
   
 ####     - Error Messages :
-          1. ERR_VERSION - The contents were not updated because of a version mismatch.
+          1. ERR_VERSION <version> - The contents were not updated because of a version mismatch & provides current version.
           2. ERR_FILE_NOT_FOUND - The filename doesn’t exist.
           3. ERR_CMD_ERR - The command is not formatted correctly.
           4. ERR_INTERNAL - Any other error you wish to report that is not covered by the rest.
-
-### *INCOMPLETE CODE -*
-  
-  * Multi Client - partialy runs.
-  * Expire Time - not done.
-  * Muli-version - not done.
-  * Rename - not done.
-  * Delete - not working.
-  * Code Documentation - not done.
-  * Test Case - not done.
   
 ### *REFERANCE CODE -*
 
