@@ -34,7 +34,7 @@ var mutex = &sync.Mutex{}
  **/
 func serverMain() {
 
-	service := ":8081"
+	service := ":8080”
 	/* Create the server's socket on port '8080'. */
 	tcpAddr, err := net.ResolveTCPAddr("tcp", service)
 	checkError(err)
