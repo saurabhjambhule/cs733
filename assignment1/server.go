@@ -4,11 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -26,7 +25,6 @@ type DBData struct {
 	TFlag int
 }
 
-var mutex = &sync.Mutex{}
 
 /**
  * Function: serverMain
@@ -34,8 +32,7 @@ var mutex = &sync.Mutex{}
  **/
 func serverMain() {
 
-	service := ":8080”
-	/* Create the server's socket on port '8080'. */
+	service := ":8080"
 	tcpAddr, err := net.ResolveTCPAddr("tcp", service)
 	checkError(err)
 
@@ -394,6 +391,7 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 
 		if flagff {
 			fileCont = cmd1[i]
+			flagff = false
 		} else {
 			fileCont = fileCont + "\n" + cmd1[i]
 		}
@@ -410,9 +408,7 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 		if len(cmd1) == i+1 {
 
 			last = last + "##"
-
 			i++
-
 			return "", i, last
 		}
 
@@ -443,9 +439,7 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 
 		final, _ := json.Marshal(f2)
 
-		mutex.Lock()
 		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		mutex.Unlock()
 		checkError(err)
 		i++
 
@@ -473,9 +467,7 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 
 		final, _ := json.Marshal(f2)
 
-		mutex.Lock()
 		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		mutex.Unlock()
 		checkError(err)
 		i++
 
@@ -626,6 +618,7 @@ func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, file
 			}
 
 			if flagff {
+				flagff = false
 				fileCont = cmd1[i]
 			} else {
 				fileCont = fileCont + "\n" + cmd1[i]
@@ -673,9 +666,7 @@ func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, file
 
 		final, _ := json.Marshal(f2)
 
-		mutex.Lock()
 		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		mutex.Unlock()
 		checkError(err)
 		i++
 		return "OK " + vStrT, i, ""
@@ -732,6 +723,7 @@ func appendFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, f
 		}
 
 		if flagff {
+			flagff = false
 			fileCont = cmd1[i]
 		} else {
 			fileCont = fileCont + "\n" + cmd1[i]
@@ -786,9 +778,7 @@ func appendFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, f
 		}
 
 		final, _ := json.Marshal(f2)
-		mutex.Lock()
 		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		mutex.Unlock()
 		checkError(err)
 		i++
 
@@ -824,7 +814,6 @@ func deleteFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, in
 
 	fileNm := string(cmd[1])
 
-	mutex.Lock()
 	flag, _, iter1 := getFile(fileNm, fileDB)
 
 	if flag {
@@ -838,12 +827,10 @@ func deleteFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, in
 		var wo *opt.WriteOptions
 
 		err := fileDB.Delete([]byte(fileNm), wo)
-		mutex.Unlock()
 		checkError(err)
 		i++
 		return "OK", i
 	} else {
-		mutex.Unlock()
 		i++
 		return "ERR_FILE_NOT_FOUND", i
 	}
