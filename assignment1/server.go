@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"net"
+	"sync"
 	"strconv"
 	"strings"
 	"time"
@@ -12,11 +13,8 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
-/**
- * Structre : DBData
- * Contains metadata and contents of the file .
- **/
-
+//Structre : DBData
+//Contains metadata and contents of the file .
 type DBData struct {
 	Vers  int
 	Cont  string
@@ -24,63 +22,57 @@ type DBData struct {
 	TFlag int
 }
 
+var mutex = &sync.Mutex{}
 
-/**
- * Function: serverMain
- * Creates socket, listens to requets and serve them.
- **/
+//Function: serverMain
+//Creates socket, listens to requets and serve them.
 func serverMain() {
 
 	service := ":8080"
 	tcpAddr, err := net.ResolveTCPAddr("tcp", service)
 	checkError(err)
 
-	/* Enable servers to listen for incomming connections. */
+	//Enable servers to listen for incomming connections.
 	listener, err := net.ListenTCP("tcp", tcpAddr)
 	checkError(err)
 
-	/* Create database connection. */
+	//Create database connection.
 	fileDB, err := leveldb.OpenFile("./DB", nil)
 	checkError(err)
 	defer fileDB.Close()
 
-	/* Infinite loop, so serevr can run continuously till we terminate. */
+	//Infinite loop, so serevr can run continuously till we terminate.
 	for {
 
-		/* Accepts incomming client's connection. */
-		//conn.Write([]byte("hi\n"))
+		//Accepts incomming client's connection. 
 		conn, err := listener.Accept()
 		if err != nil {
 			continue
 		}
-		/* Create new thread to SERVE client. */
+		//Create new thread to SERVE client. 
 		go handleServer(conn, fileDB)
 	}
 }
 
-/**
- * Function: handleServer
- * Serves clients various requets.
- * Parameters:
- *    conn - client connection
- *    fileDB - database connection
- **/
+//Function: handleServer
+//Serves clients various requets.
+//Parameters:
+//    conn - client connection
+//    fileDB - database connection
 func handleServer(conn net.Conn, fileDB *leveldb.DB) {
 
 	var incMsg, outMsg string
+	var last string = ""
 	incMsgT := make([]byte, 1024)
 
-	var last string = ""
-
 	for {
-
+		//Read client's send message
 		in, err := bufio.NewReader(conn).Read(incMsgT)
-
 		if err != nil {
-
 			return
 		}
 
+		//Replacing \r\n with ## for splitting multiple commands.
 		for i := 0; i < len(incMsgT); i++ {
 			if (incMsgT[i] == uint8(13)) && (incMsgT[i+1] == uint8(10)) {
 				incMsgT[i] = uint8('#')
@@ -88,9 +80,11 @@ func handleServer(conn net.Conn, fileDB *leveldb.DB) {
 			}
 		}
 
+		//convert bytes into string and remove last \r\n
 		incMsg = string(incMsgT)
 		txt := incMsg[0 : in-2]
 
+		//If the contents are in two different incomming message, then merge them.
 		if len(last) != 0 {
 
 			incMsg = last + txt
@@ -98,12 +92,15 @@ func handleServer(conn net.Conn, fileDB *leveldb.DB) {
 			incMsg = txt
 		}
 
+		//Getting various commands from incomming messages.
 		cmd := strings.Split(incMsg, "##")
 
+		//Proccessing the requested command.
 		for i := 0; i < len(cmd); {
 
 			outMsg, i, last = cmdEval(cmd, i, conn, fileDB)
 
+			//Write result to client. 
 			conn.Write([]byte(outMsg + "\n"))
 
 		}
@@ -111,16 +108,14 @@ func handleServer(conn net.Conn, fileDB *leveldb.DB) {
 
 }
 
-/**
- * Function: isExpireT
- * Checkes whether file expire or not
- * Parameters:
- *    fileName - file name
- *    iterT - pointer database location
- * Return:
- *	  true - file expired
- *	  false - file alive
- **/
+//Function: isExpireT
+//Checkes whether the file is expired or not. If expired delete the file.
+//Parameters:
+//    fileName - file name
+//    iterT - pointer database location
+// Return:
+//	  true - file expired
+//	  false - file alive
 func isExpireT(fileName string, iterT iterator.Iterator) bool {
 
 	var expFlag int = 0
@@ -157,47 +152,11 @@ func isExpireT(fileName string, iterT iterator.Iterator) bool {
 	}
 }
 
-/**
- * Function: getFile
- * Checkes whether file exists or not
- * Parameters:
- *    fileName - file name
- *    fileDB - database connection
- * Return:
- *	  true - file found
- *	  false - file not found
- *	  file itself
- **/
-func getFile(fileName string, fileDB *leveldb.DB) (bool, []byte, iterator.Iterator) {
 
-	var flag int = 0
-	var val []byte
-
-	iter := fileDB.NewIterator(nil, nil)
-
-	for iter.Next() {
-		key := iter.Key()
-		if string(key) == fileName {
-			val = iter.Value()
-			flag = 1
-			break
-		}
-	}
-
-	if flag == 1 {
-		return true, val, iter
-	} else {
-		return false, nil, iter
-	}
-
-}
-
-/**
- * Function: checkError
- * Prints error
- * Parameters:
- *    err - error that encounterd
- **/
+//Function: checkError
+//Prints error
+//Parameters:
+//    err - error that encounterd
 func checkError(err error) {
 
 	if err != nil {
@@ -205,30 +164,21 @@ func checkError(err error) {
 	}
 }
 
-/**
- * Function: isCmd
- * Validation of client's provided COMMAND
- * Parameters:
- *    cmdT - command
- * Return:
- *	  true - command ok
- *	  false - command not ok
- **/
+//Function: isCmd
+//Validation of client's provided COMMAND
+//Parameters:
+//    cmdT - command
+// Return:
+//	  1 - command ok
+//	  0 - command not ok
 func isCmd(cmdT []string) int {
 
 	cmdTyp := string(cmdT[0])
 	cmdLen := len(cmdT)
 
-	ch1 := "write"
-	ch2 := "read"
-	ch3 := "cas"
-	ch4 := "append"
-	ch5 := "rename"
-	ch6 := "delete"
-
 	switch cmdTyp {
 
-	case ch1, ch4:
+	case "write", "append":
 		if !(cmdLen == 3 || cmdLen == 4) {
 			return 0
 		} else {
@@ -244,7 +194,7 @@ func isCmd(cmdT []string) int {
 		}
 		return 1
 
-	case ch2, ch6:
+	case "read", "delete":
 		if cmdLen > 2 || cmdLen < 2 {
 			return 0
 		} else if len([]byte(cmdT[1])) > 250 {
@@ -252,7 +202,7 @@ func isCmd(cmdT []string) int {
 		}
 		return 1
 
-	case ch3:
+	case "cas":
 		if !(cmdLen == 4 || cmdLen == 5) {
 			return 0
 		} else {
@@ -268,63 +218,41 @@ func isCmd(cmdT []string) int {
 		}
 		return 1
 
-	case ch5:
-		if cmdLen > 3 || cmdLen < 3 {
-			return 0
-		} else if len([]byte(cmdT[1])) > 250 {
-			return 0
-		} else if len([]byte(cmdT[2])) > 250 {
-			return 0
-		}
-		return 1
-
 	default:
 		return 2
 	}
 	return 0
 }
 
-/**
- * Function: cmdEval
- * Evalutes result of client's command
- * Parameters:
- *    cmdTmp - client's command
- *    conn - client's connection
- *	  fileDB - database connection
- * Return:
- *	  Result after successfull command execution, otherwise error msg
- **/
+
+//Function: cmdEval
+//Evalutes result of client's command
+//Parameters:
+//    cmdTmp - client's command
+//    conn - client's connection
+//	  fileDB - database connection
+//Return:
+//	  Result after successfull command execution, otherwise error msg
 func cmdEval(cmdTmp []string, i int, conn net.Conn, fileDB *leveldb.DB) (string, int, string) {
 
 	cmd := strings.Fields(cmdTmp[i])
 	cmdTyp := string(cmd[0])
 	cmdLen := len(cmd)
 
-	ch1 := "write"
-	ch2 := "read"
-	ch3 := "cas"
-	ch4 := "append"
-	ch5 := "rename"
-	ch6 := "delete"
-
 	switch cmdTyp {
-	case ch1:
-
+	case "write":
 		tt, ii, last := writeFile(cmd, cmdTmp, i, cmdLen, conn, fileDB)
 		return tt, ii, last
-	case ch2:
+	case "read":
 		tt, ii := readFile(cmd, i, cmdLen, fileDB)
 		return tt, ii, ""
-	case ch3:
+	case "cas":
 		tt, ii, last := casFile(cmd, cmdTmp, i, cmdLen, conn, fileDB)
 		return tt, ii, last
-	case ch4:
+	case "append":
 		tt, ii, last := appendFile(cmd, cmdTmp, i, cmdLen, conn, fileDB)
 		return tt, ii, last
-	case ch5:
-		tt, ii := renameFile(cmd, i, cmdLen, fileDB)
-		return tt, ii, ""
-	case ch6:
+	case "delete":
 		tt, ii := deleteFile(cmd, i, cmdLen, fileDB)
 		return tt, ii, ""
 	default:
@@ -335,31 +263,19 @@ func cmdEval(cmdTmp []string, i int, conn net.Conn, fileDB *leveldb.DB) (string,
 	return "ERR_CMD_ERR", i, ""
 }
 
-/**
- * Function: writeFile
- * Insert given data to database.
- * Return:
- *	  OK <version> - successfull
- *	  ERR_CMD_ERR - invalid command
- *	  ERR_INTERNAL - content exceeds given limit
- **/
-func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fileDB *leveldb.DB) (string, int, string) {
+
+//Function: getContent
+//Collect the content of the file.
+//Return:
+//	  flagCont - true, if all content of the file recieved
+//	  fileCont - flagCont:true- content of the file, flagCont:false- partial content waits for remaining 
+//    flagErr -  if file is oversize than stated size in command
+func getContent(cmd []string, cmd1 []string, i int, sz int, cmdLen int)(bool, int, string, bool){
+
 
 	var noByt int = 0
-	var fileCont string = ""
-	var incMsg []byte
-	var vStr string
-	var f1, f2 DBData
 	var last string = ""
-
-	if isCmd(cmd) == 0 {
-		i++
-
-		return "ERR_CMD_ERR", i, ""
-	}
-
-	fileNm := string(cmd[1])
-	sz, _ := strconv.Atoi(cmd[2])
+	var fileCont string = ""
 
 	last = last + cmd1[i] + " "
 
@@ -367,12 +283,13 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 
 	if len(cmd1) == i+1 {
 		i++
-		return "", i, last
+		return false, i, last, false
 	}
 
 	flagff := true
 
 	for {
+
 		i++
 
 		last = last + cmd1[i] + "\n"
@@ -395,11 +312,12 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 			fileCont = fileCont + "\n" + cmd1[i]
 		}
 
+
 		noByt = noByt + len(cmd1[i])
 
 		if noByt > sz {
 			i++
-			return "ERR_INTERNAL", i, ""
+			return false, i, "ERR_INTERNAL", true
 		} else if noByt == sz {
 			break
 		}
@@ -408,9 +326,91 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 
 			last = last + "##"
 			i++
-			return "", i, last
+			return false, i, last, false
 		}
 
+	}
+
+	return true, i, fileCont, false
+
+}
+
+//Function: getFile
+//Checkes whether file exists or not
+//Parameters:
+//    fileName - file name
+//    fileDB - database connection
+//Return:
+//	  true - file found
+//	  false - file not found
+//	  file itself
+func getFile(fileName string, fileDB *leveldb.DB) (bool, []byte, iterator.Iterator) {
+
+	var flag int = 0
+	var val []byte
+
+	iter := fileDB.NewIterator(nil, nil)
+
+	//doOperation([]byte(fileNm), nil, "delete", fileDB, wo)
+
+	for iter.Next() {
+		key := iter.Key()
+		if string(key) == fileName {
+			val = iter.Value()
+			flag = 1
+			break
+		}
+	}
+
+	if flag == 1 {
+		return true, val, iter
+	} else {
+		return false, nil, iter
+	}
+
+}
+
+func doOperation(fileNm []byte, finalByt []byte, cmdTyp string, fileDB *leveldb.DB, wo *opt.WriteOptions) {
+
+	var err error
+
+	mutex.Lock()
+	switch cmdTyp {
+		case "write":	err = fileDB.Put(fileNm, finalByt, nil)
+		case "delete": 	err = fileDB.Delete([]byte(fileNm), wo)
+	}
+	mutex.Unlock()
+	checkError(err)
+}
+
+//Function: writeFile
+//Insert given data to database.
+//Return:
+//	  OK <version> - successfull
+//	  ERR_CMD_ERR - invalid command
+//	  ERR_INTERNAL - content exceeds given limit
+func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fileDB *leveldb.DB) (string, int, string) {
+	
+	var fileCont string = ""
+	var incMsg []byte
+	var vStr string
+	var f1, f2 DBData
+	var flagCont, flagErr bool
+	
+	sz, _ := strconv.Atoi(cmd[2])
+	if isCmd(cmd) == 0 {
+		i++
+		return "ERR_CMD_ERR", i, ""
+	}
+
+	fileNm := string(cmd[1])
+
+	flagCont, i, fileCont, flagErr = getContent(cmd,cmd1, i, sz,cmdLen)
+	if flagErr{
+		return fileCont, i, ""
+	}
+	if !flagCont{
+		return "", i, fileCont
 	}
 
 	flag, val, _ := getFile(fileNm, fileDB)
@@ -438,8 +438,8 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 
 		final, _ := json.Marshal(f2)
 
-		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		checkError(err)
+		doOperation([]byte(fileNm), []byte(final), "write", fileDB, nil)
+
 		i++
 
 		return "OK " + vStr, i, ""
@@ -465,9 +465,8 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 		}
 
 		final, _ := json.Marshal(f2)
-
-		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		checkError(err)
+		
+		doOperation([]byte(fileNm), []byte(final), "write", fileDB, nil)
 		i++
 
 		return "OK " + "1001", i, ""
@@ -476,14 +475,12 @@ func writeFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fi
 	return "OK", i, ""
 }
 
-/**
- * Function: readFile
- * Read given file data from database.
- * Return:
- *	  CONTENTS <version> <numbytes> <exptime> \r\n <content bytes> - file contents on success
- *	  ERR_CMD_ERR - invalid command
- *	  ERR_FILE_NOT_FOUND - give file doesnt exist
- **/
+//Function: readFile
+//Read given file data from database.
+//Return:
+//	  CONTENTS <version> <numbytes> <exptime> \r\n <content bytes> - file contents on success
+//	  ERR_CMD_ERR - invalid command
+//	  ERR_FILE_NOT_FOUND - give file doesnt exist
 func readFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, int) {
 
 	var flagT bool = false
@@ -505,6 +502,9 @@ func readFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, int)
 	if flag {
 		if !isExpireT(fileNm, iter1) {
 			flagT = true
+		}else{
+				var wo *opt.WriteOptions
+				doOperation([]byte(fileNm), nil, "delete", fileDB, wo)
 		}
 	}
 
@@ -540,18 +540,16 @@ func readFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, int)
 	return "OK", i
 }
 
-/**
- * Function: writeFile
- * Insert given data to database.
- * Return:
- *	  OK <version> - successfull
- *	  ERR_CMD_ERR - invalid command
- *	  ERR_INTERNAL - content exceeds given limit
- **/
+//Function: writeFile
+//Insert given data to database.
+//Return:
+//	  OK <version> - successfull
+//	  ERR_CMD_ERR - invalid command
+//	  ERR_INTERNAL - content exceeds given limit
 func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fileDB *leveldb.DB) (string, int, string) {
 
+	var flagCont, flagErr bool
 	var flag bool = false
-	var noByt int = 0
 	var fileCont string = ""
 	var incMsg []byte
 	var vStr string
@@ -559,15 +557,13 @@ func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, file
 	var versT1 int
 	var f1, f2 DBData
 
-	var last string = ""
-
+	sz, _ := strconv.Atoi(cmd[3])
 	if isCmd(cmd) == 0 {
 		i++
 		return "ERR_CMD_ERR", i, ""
 	}
 
 	fileNm := string(cmd[1])
-	sz, _ := strconv.Atoi(cmd[3])
 	vStr = string(cmd[2])
 
 	flagT, val, _ := getFile(fileNm, fileDB)
@@ -588,59 +584,12 @@ func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, file
 
 	if flag {
 
-		last = last + cmd1[i] + " "
-
-		last = last + "##"
-
-		if len(cmd1) == i+1 {
-
-			i++
-			return "", i, last
+		flagCont, i, fileCont, flagErr = getContent(cmd, cmd1, i, sz, cmdLen)
+		if flagErr{
+			return fileCont, i, ""
 		}
-
-		flagff := true
-
-		for {
-			i++
-
-			last = last + cmd1[i] + "\n"
-
-			cmddd := strings.Fields(cmd1[i])
-
-			if isCmd(cmddd) != 2 {
-				break
-			}
-
-			if len(cmd1[i]) == 0 {
-				fileCont = fileCont + "\n"
-				continue
-			}
-
-			if flagff {
-				flagff = false
-				fileCont = cmd1[i]
-			} else {
-				fileCont = fileCont + "\n" + cmd1[i]
-			}
-
-			noByt = noByt + len(cmd1[i])
-
-			if noByt > sz {
-				i++
-				return "ERR_INTERNAL", i, ""
-			} else if noByt == sz {
-				break
-			}
-
-			if len(cmd1) == i+1 {
-
-				last = last + "##"
-
-				i++
-
-				return "", i, last
-			}
-
+		if !flagCont{
+			return "", i, fileCont
 		}
 
 		versT1 = versT1 + 1
@@ -665,8 +614,8 @@ func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, file
 
 		final, _ := json.Marshal(f2)
 
-		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		checkError(err)
+		doOperation([]byte(fileNm), []byte(final), "write", fileDB, nil)
+
 		i++
 		return "OK " + vStrT, i, ""
 
@@ -680,70 +629,25 @@ func casFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, file
 
 func appendFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, fileDB *leveldb.DB) (string, int, string) {
 
-	var noByt int = 0
+	var flagCont, flagErr bool
 	var fileCont string = ""
 	var incMsg []byte
 	var vStr string
 	var f1, f2 DBData
-	var last string = ""
 
+	sz, _ := strconv.Atoi(cmd[2])
 	if isCmd(cmd) == 0 {
 		i++
 		return "ERR_CMD_ERR", i, ""
 	}
 
 	fileNm := string(cmd[1])
-	sz, _ := strconv.Atoi(cmd[2])
-
-	last = last + cmd1[i] + " "
-	last = last + "##"
-
-	if len(cmd1) == i+1 {
-
-		i++
-		return "", i, last
+	flagCont, i, fileCont, flagErr = getContent(cmd,cmd1, i, sz,cmdLen)
+	if flagErr{
+		return fileCont, i, ""
 	}
-
-	flagff := true
-	for {
-		i++
-
-		last = last + cmd1[i] + "\n"
-
-		cmddd := strings.Fields(cmd1[i])
-
-		if isCmd(cmddd) != 2 {
-			break
-		}
-
-		if len(cmd1[i]) == 0 {
-			fileCont = fileCont + "\n"
-			continue
-		}
-
-		if flagff {
-			flagff = false
-			fileCont = cmd1[i]
-		} else {
-			fileCont = fileCont + "\n" + cmd1[i]
-		}
-
-		noByt = noByt + len(cmd1[i])
-		if noByt > sz {
-			i++
-			return "ERR_INTERNAL", i, ""
-		} else if noByt == sz {
-			break
-		}
-		if len(cmd1) == i+1 {
-
-			last = last + "##"
-
-			i++
-
-			return "", i, last
-		}
-
+	if !flagCont{
+		return "", i, fileCont
 	}
 
 	flag, val, _ := getFile(fileNm, fileDB)
@@ -777,8 +681,7 @@ func appendFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, f
 		}
 
 		final, _ := json.Marshal(f2)
-		err := fileDB.Put([]byte(fileNm), []byte(final), nil)
-		checkError(err)
+		doOperation([]byte(fileNm), []byte(final), "write", fileDB, nil)
 		i++
 
 		return "OK " + vStr, i, ""
@@ -789,17 +692,6 @@ func appendFile(cmd []string, cmd1 []string, i int, cmdLen int, conn net.Conn, f
 	}
 	_ = incMsg
 	return "OK", i, ""
-}
-
-func renameFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, int) {
-
-	if isCmd(cmd) == 0 {
-		i++
-		return "ERR_CMD_ERR", i
-	}
-
-	i++
-	return "", i
 }
 
 func deleteFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, int) {
@@ -825,8 +717,7 @@ func deleteFile(cmd []string, i int, cmdLen int, fileDB *leveldb.DB) (string, in
 
 		var wo *opt.WriteOptions
 
-		err := fileDB.Delete([]byte(fileNm), wo)
-		checkError(err)
+		doOperation([]byte(fileNm), nil, "delete", fileDB, wo)
 		i++
 		return "OK", i
 	} else {
