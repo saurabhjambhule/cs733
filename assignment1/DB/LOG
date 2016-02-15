@@ -6,3 +6,20 @@
 23:50:11.866665 memdb@flush created L0@437 N·44 S·1KiB "TestFile,d409":"TestFile,v366"
 23:50:11.867837 db@janitor F·12 G·0
 23:50:11.867862 db@open done T·3.220006ms
+=============== Feb 11, 2016 (IST) ===============
+13:48:18.050792 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+13:48:18.052197 version@stat F·[3 7] S·4KiB[3KiB 1KiB] Sc·[0.75 0.00]
+13:48:18.052267 db@open opening
+13:48:18.052428 journal@recovery F·1
+13:48:18.052857 journal@recovery recovering @438
+13:48:18.054399 memdb@flush created L0@440 N·44 S·1KiB "TestFile,d454":"TestFile,v411"
+13:48:18.054754 version@stat F·[4 7] S·5KiB[4KiB 1KiB] Sc·[1.00 0.00]
+13:48:18.055526 db@janitor F·13 G·0
+13:48:18.055553 db@open done T·3.271158ms
+13:48:18.055690 table@compaction L0·4 -> L1·0 S·4KiB Q·455
+13:48:18.056954 version@stat F·[0 7] S·1KiB[0B 1KiB] Sc·[0.00 0.00]
+13:48:18.057281 table@compaction committed F-4 S-4KiB Ke·0 D·176 T·1.533117ms
+13:48:18.057406 table@remove removed @440
+13:48:18.057484 table@remove removed @437
+13:48:18.057543 table@remove removed @434
+13:48:18.057600 table@remove removed @431
