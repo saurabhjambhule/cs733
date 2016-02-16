@@ -11,7 +11,7 @@ type Persi_State struct {
 	id       uint32
 	currTerm uint32
 	votedFor uint32
-	log      []byte
+	log      Log
 }
 
 //Contains volatile state of servers.
@@ -20,12 +20,22 @@ type Volat_State struct {
 	lastApplied int32
 	timer       int32
 	status      string
+	logInd      int32
 }
 
 //Contains volatile state of the leader.
 type Volat_LState struct {
 	nextIndex  int32
 	matchIndex []int32
+}
+
+type MyLog struct {
+	term uint32
+	log  string
+}
+
+type Log struct {
+	log []MyLog
 }
 
 //Contains all the state with respect to given machine.
@@ -50,9 +60,9 @@ type AppEntrReq struct {
 	term       uint32
 	leaderId   uint32
 	preLogInd  int32
-	preLogTerm int32
+	preLogTerm uint32
 	leaderCom  int32
-	entries    []byte
+	log        Log
 }
 
 //AppendEntriesResponse: Invoked by servers on AppendEntriesRequest.

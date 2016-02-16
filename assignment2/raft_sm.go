@@ -64,38 +64,30 @@ func eventLoop(sm State_Machine) {
 
 func (appReq AppEntrReq) send(sm1 State_Machine) {
 
-	fmt.Printf("##> %T", sm1)
-
-	sm, ok := sm1.(Candidate)
-	if ok {
-		fmt.Println(sm.status)
-	}
-
-	sm, ok = sm1.(Follower)
-	if ok {
-		fmt.Println(sm.status)
-	}
-	sm, ok = sm1.(Leader)
-	if ok {
-		fmt.Println(sm.status)
-	}
-	/*
-		var sm State_Machine
-		switch sm1.(type) {
-		case Follower:
-			sm := sm1.(Follower)
-			fmt.Print("*$$$*", sm.status)
-			fmt.Printf("##> %T", sm)
-		case Candidate:
-			sm = sm1.(Candidate)
-		case Leader:
-			sm = sm1.(Leader)
+	switch sm1.(type) {
+	case Follower:
+		sm := sm1.(Follower)
+		if (sm.currTerm > appReq.term) || ((appReq.preLogInd != sm.logInd) && (appReq.preLogTerm == sm.currTerm)) {
+			resp := AppEntrResp{term: sm.currTerm, succ: false}
+			actionCh <- resp
+			return
 		}
-		fmt.Printf("##>> %T", sm)*/
-	fmt.Println(sm.status)
+		//fmt.Println(sm.logInd)
+		sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, sm.log, appReq.log)
+		//fmt.Println(sm.logInd)
+		resp := AppEntrResp{term: sm.currTerm, succ: true}
+		actionCh <- resp
 
-	resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
-	actionCh <- resp
+	case Candidate:
+		sm := sm1.(Candidate)
+		fmt.Println(sm.status)
+
+	case Leader:
+		sm := sm1.(Leader)
+		fmt.Println(sm.status)
+
+	}
+
 }
 
 func (appRes AppEntrResp) send(sm State_Machine) {
@@ -118,6 +110,14 @@ func (app Append) commit(sm State_Machine) {
 
 func (to Timeout) alarm(sm State_Machine) {
 
+}
+
+func copyLog(term uint32, myInd int32, oldLog Log, newLog Log) (int32, Log) {
+	for i := 0; i < len(newLog.log); i++ {
+		oldLog.log = append(oldLog.log, newLog.log[i])
+		myInd++
+	}
+	return myInd, oldLog
 }
 
 //Channel declaration for listening to incomming requests.
