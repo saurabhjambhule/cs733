@@ -21,20 +21,23 @@ type TestCases struct {
 //Initializing Testing.
 func TestRaftSM(t *testing.T) {
 	FollTesting(t)
+	CandTesting(t)
+	time.Sleep(2 * time.Second)
+
 }
 
 //Testing various scenarios against Follower state.
 func FollTesting(t *testing.T) {
 	var sm State_Machine
 	//Creating a follower which has just joined the cluster.
-	follObj := Follower{Persi_State: Persi_State{id: 1000, currTerm: 2}, Volat_State: Volat_State{status: FOLL, commitIndex: 0, lastApplied: 0, timer: 1500, logInd: 0}}
+	follObj := Follower{Persi_State: Persi_State{id: 1000, currTerm: 2, votedFor: 0}, Volat_State: Volat_State{status: FOLL, commitIndex: 0, lastApplied: 0, timer: 1500, logInd: 1}}
 	sm = follObj
 	go follSys(sm)
 
 	var follTC TestCases
 	var cmdReq = []string{"read test", "read cs733"}
 
-	//Sending an apped request//
+	/* Sending an apped request */
 	follTC.req = Append{data: []byte(cmdReq[0])}
 	follTC.respExp = Commit{data: []byte("5000"), err: []byte("I'm not leader")}
 	follTC.t = t
@@ -42,10 +45,10 @@ func FollTesting(t *testing.T) {
 	follTC.resp = <-actionCh
 	follTC.expect()
 
-	//Sending appendEntry request//
+	/* Sending appendEntry request */
 	//Suppose leader and follower are at same term.
-	entries := Log{log: []MyLog{{2, "read test"}}}
-	follTC.req = AppEntrReq{term: 2, leaderId: 5000, preLogInd: 0, preLogTerm: 2, log: entries, leaderCom: 0}
+	entries1 := Log{log: []MyLog{{2, "read test"}}}
+	follTC.req = AppEntrReq{term: 2, leaderId: 5000, preLogInd: 1, preLogTerm: 2, log: entries1, leaderCom: 0}
 	follTC.respExp = AppEntrResp{term: 2, succ: true}
 	follTC.t = t
 	netCh <- follTC.req
@@ -53,8 +56,8 @@ func FollTesting(t *testing.T) {
 	follTC.expect()
 
 	//Sending Multiple entries
-	entries = Log{log: []MyLog{{2, "read test"}, {2, "read cs733"}}}
-	follTC.req = AppEntrReq{term: 2, leaderId: 5000, preLogInd: 0, preLogTerm: 2, log: entries, leaderCom: 0}
+	entries2 := Log{log: []MyLog{{2, "read test"}, {2, "read cs733"}}}
+	follTC.req = AppEntrReq{term: 2, leaderId: 5000, preLogInd: 2, preLogTerm: 2, log: entries2, leaderCom: 0}
 	follTC.respExp = AppEntrResp{term: 2, succ: true}
 	follTC.t = t
 	netCh <- follTC.req
@@ -62,8 +65,8 @@ func FollTesting(t *testing.T) {
 	follTC.expect()
 
 	//Suppose follower has greater term than leader.
-	entries = Log{log: []MyLog{{1, "read test"}}}
-	follTC.req = AppEntrReq{term: 1, leaderId: 5000, preLogInd: 0, preLogTerm: 1, log: entries, leaderCom: 0}
+	entries3 := Log{log: []MyLog{{1, "delete test"}}}
+	follTC.req = AppEntrReq{term: 1, leaderId: 5000, preLogInd: 1, preLogTerm: 1, log: entries3, leaderCom: 0}
 	follTC.respExp = AppEntrResp{term: 2, succ: false}
 	follTC.t = t
 	netCh <- follTC.req
@@ -71,24 +74,61 @@ func FollTesting(t *testing.T) {
 	follTC.expect()
 
 	//Suppose leader and follower are at same term, but previoud log index do not match.
-	entries = Log{log: []MyLog{{2, "read test"}, {2, "read cs733"}}}
-	follTC.req = AppEntrReq{term: 2, leaderId: 5000, preLogInd: 1, preLogTerm: 2, log: entries, leaderCom: 0}
+	//entries = Log{log: []MyLog{{2, "read test"}, {2, "read cs733"}}}
+	follTC.req = AppEntrReq{term: 2, leaderId: 5000, preLogInd: 1, preLogTerm: 2, log: entries2, leaderCom: 0}
 	follTC.respExp = AppEntrResp{term: 2, succ: false}
 	follTC.t = t
 	netCh <- follTC.req
 	follTC.resp = <-actionCh
 	follTC.expect()
 
-	//fmt.Println(string((follTC.resp).(Commit).err))
-	//fmt.Printf("## %T", (follTC.resp).(Commit))
-	//fmt.Printf("## %T", follTC.resp.req)
+	/* Sending vote request */
+	//sending vote request with lower term.
+	follTC.req = VoteReq{term: 1, candId: 2000, preLogInd: 1, preLogTerm: 1}
+	follTC.respExp = VoteResp{term: 2, voteGrant: false}
+	follTC.t = t
+	netCh <- follTC.req
+	follTC.resp = <-actionCh
+	follTC.expect()
 
-	time.Sleep(5 * time.Second)
+	//sending vote request with higher term, but not upto date log.
+	follTC.req = VoteReq{term: 3, candId: 2000, preLogInd: 0, preLogTerm: 0}
+	follTC.respExp = VoteResp{term: 2, voteGrant: false}
+	follTC.t = t
+	netCh <- follTC.req
+	follTC.resp = <-actionCh
+	follTC.expect()
+	time.Sleep(1 * time.Second)
 
 }
 
 //Testing various scenarios against Candidate state.
 func CandTesting(t *testing.T) {
+	//Creating a Candidate.
+	var sm State_Machine
+	candObj := Candidate{Persi_State: Persi_State{id: 1001, currTerm: 3, votedFor: 1}, Volat_State: Volat_State{status: FOLL, commitIndex: 3, lastApplied: 2, timer: 1500, logInd: 5}}
+	sm = candObj
+	go candSys(sm)
+
+	var follTC TestCases
+	var cmdReq = []string{"read test", "read cs733"}
+
+	/* Sending an apped request */
+	follTC.req = Append{data: []byte(cmdReq[0])}
+	follTC.respExp = Commit{data: []byte("5000"), err: []byte("I'm not leader")}
+	follTC.t = t
+	clientCh <- follTC.req
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	/* Sending vote request */
+	//sending vote request.
+	follTC.req = VoteReq{term: 1, candId: 2000, preLogInd: 1, preLogTerm: 1}
+	follTC.respExp = VoteResp{term: 3, voteGrant: false}
+	follTC.t = t
+	netCh <- follTC.req
+	follTC.resp = <-actionCh
+	follTC.expect()
 
 }
 
@@ -101,10 +141,11 @@ func enterLog(mylog MyLog) Log {
 	var log1 Log
 	log1.log = append(log1.log, mylog)
 	return log1
-
 }
+
 func (tc TestCases) expect() {
 	if !reflect.DeepEqual(tc.resp, tc.respExp) {
-		tc.t.Error(fmt.Sprintf("Expected: ", tc.resp, "Found: ", tc.respExp))
+
+		tc.t.Error(fmt.Sprintf("\nRequested: ", tc.req, "\nExpected: ", tc.respExp, "\nFound: ", tc.resp))
 	}
 }

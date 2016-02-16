@@ -124,15 +124,39 @@ type Reply struct {
 	ack interface{}
 }
 
-func (appReq AppEntrReq) alarm(sm State_Machine)    {}
-func (appResp AppEntrResp) alarm(sm State_Machine)  {}
-func (votReq VoteReq) alarm(sm State_Machine)       {}
-func (votResp VoteResp) alarm(sm State_Machine)     {}
-func (app Append) alarm(sm State_Machine)           {}
-func (appReq AppEntrReq) commit(sm State_Machine)   {}
-func (appResp AppEntrResp) commit(sm State_Machine) {}
-func (votReq VoteReq) commit(sm State_Machine)      {}
-func (votResp VoteResp) commit(sm State_Machine)    {}
-func (to Timeout) commit(sm State_Machine)          {}
-func (app Append) send(sm State_Machine)            {}
-func (to Timeout) send(sm State_Machine)            {}
+func (appReq AppEntrReq) alarm(sm State_Machine) State_Machine {
+	return sm
+}
+func (appResp AppEntrResp) alarm(sm State_Machine) State_Machine {
+	return sm
+}
+func (votReq VoteReq) alarm(sm State_Machine) State_Machine {
+	return sm
+}
+func (votResp VoteResp) alarm(sm State_Machine) State_Machine {
+	return sm
+}
+func (app Append) alarm(sm State_Machine) State_Machine {
+	return sm
+}
+func (appReq AppEntrReq) commit(sm State_Machine) State_Machine {
+	return sm
+}
+func (appResp AppEntrResp) commit(sm State_Machine) State_Machine {
+	return sm
+}
+func (votReq VoteReq) commit(sm State_Machine) State_Machine {
+	return sm
+}
+func (votResp VoteResp) commit(sm State_Machine) State_Machine {
+	return sm
+}
+func (to Timeout) commit(sm State_Machine) State_Machine {
+	return sm
+}
+func (app Append) send(sm State_Machine) State_Machine {
+	return sm
+}
+func (to Timeout) send(sm State_Machine) State_Machine {
+	return sm
+}

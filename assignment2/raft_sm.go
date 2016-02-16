@@ -4,13 +4,12 @@ import "fmt"
 
 //This deals with the incomming rquest and invokes repective response event.
 type Message interface {
-	send(sm State_Machine)
-	commit(sm State_Machine)
-	alarm(sm State_Machine)
+	send(sm State_Machine) State_Machine
+	commit(sm State_Machine) State_Machine
+	alarm(sm State_Machine) State_Machine
 }
 
-type State_Machine interface {
-}
+type State_Machine interface{}
 
 //Function for follower state.
 func follSys(sm1 State_Machine) {
@@ -44,17 +43,25 @@ func eventLoop(sm State_Machine) {
 		//Requests from client machine.
 		case appendMsg := <-clientCh:
 			msg = appendMsg.(Append)
-			msg.commit(sm)
+			sm = msg.commit(sm)
+
 		//Request from peers in the cluster.
 		case peerMsg := <-netCh:
 			switch peerMsg.(type) {
 			case AppEntrReq:
 				msg = peerMsg.(AppEntrReq)
-				msg.send(sm)
+				sm = msg.send(sm)
 			case AppEntrResp:
+				msg = peerMsg.(AppEntrResp)
+				sm = msg.send(sm)
 			case VoteReq:
+				msg = peerMsg.(VoteReq)
+				sm = msg.send(sm)
 			case VoteResp:
+				msg = peerMsg.(VoteResp)
+				sm = msg.send(sm)
 			}
+
 		//Timeout event.
 		case <-timeoutCh:
 
@@ -62,58 +69,98 @@ func eventLoop(sm State_Machine) {
 	}
 }
 
-func (appReq AppEntrReq) send(sm1 State_Machine) {
+func (appReq AppEntrReq) send(sm1 State_Machine) State_Machine {
 
-	switch sm1.(type) {
+	switch sm := sm1.(type) {
 	case Follower:
-		sm := sm1.(Follower)
+		//fmt.Println("~~~>", sm)
 		if (sm.currTerm > appReq.term) || ((appReq.preLogInd != sm.logInd) && (appReq.preLogTerm == sm.currTerm)) {
 			resp := AppEntrResp{term: sm.currTerm, succ: false}
 			actionCh <- resp
-			return
+			return sm
 		}
 		//fmt.Println(sm.logInd)
 		sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, sm.log, appReq.log)
 		//fmt.Println(sm.logInd)
+		//fmt.Println("~~~", sm)
 		resp := AppEntrResp{term: sm.currTerm, succ: true}
 		actionCh <- resp
+		return sm
 
 	case Candidate:
-		sm := sm1.(Candidate)
 		fmt.Println(sm.status)
+		return sm
 
 	case Leader:
-		sm := sm1.(Leader)
 		fmt.Println(sm.status)
-
+		return sm
 	}
+	return sm1
+}
+
+func (appRes AppEntrResp) send(sm1 State_Machine) State_Machine {
+	return sm1
 
 }
 
-func (appRes AppEntrResp) send(sm State_Machine) {
+func (votReq VoteReq) send(sm1 State_Machine) State_Machine {
+	switch sm := sm1.(type) {
+	case Follower:
+		fmt.Println(">>", sm)
+		if votReq.term < sm.currTerm || sm.votedFor != 0 || votReq.preLogInd < sm.logInd {
+			resp := VoteResp{term: sm.currTerm, voteGrant: false}
+			actionCh <- resp
+			return sm
+		}
+		resp := VoteResp{term: sm.currTerm, voteGrant: true}
+		actionCh <- resp
+		return sm
+
+	case Candidate:
+		resp := VoteResp{term: sm.currTerm, voteGrant: false}
+		actionCh <- resp
+		return sm
+
+	case Leader:
+		fmt.Println(sm.status)
+		return sm
+	}
+	return sm1
+}
+
+func (votRes VoteResp) send(sm1 State_Machine) State_Machine {
+	return sm1
 
 }
 
-func (votReq VoteReq) send(sm State_Machine) {
+func (app Append) commit(sm1 State_Machine) State_Machine {
+	switch sm := sm1.(type) {
+	case Follower:
+		resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
+		actionCh <- resp
+		return sm
 
+	case Candidate:
+		resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
+		actionCh <- resp
+		fmt.Println(sm.status)
+		return sm
+
+	case Leader:
+		fmt.Println(sm.status)
+		return sm
+	}
+	return sm1
 }
 
-func (votRes VoteResp) send(sm State_Machine) {
-
-}
-
-func (app Append) commit(sm State_Machine) {
-	resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
-	actionCh <- resp
-	//fmt.Println("@##", string(sm.status))
-}
-
-func (to Timeout) alarm(sm State_Machine) {
+func (to Timeout) alarm(sm1 State_Machine) State_Machine {
+	return sm1
 
 }
 
 func copyLog(term uint32, myInd int32, oldLog Log, newLog Log) (int32, Log) {
 	for i := 0; i < len(newLog.log); i++ {
+		//fmt.Println("((", newLog.log[i])
 		oldLog.log = append(oldLog.log, newLog.log[i])
 		myInd++
 	}
