@@ -8,19 +8,19 @@ const (
 
 //Contains persistent state of all servers.
 type Persi_State struct {
-	id       uint32
-	currTerm uint32
-	votedFor uint32
-	log      Log
+	id        uint32
+	currTerm  uint32
+	votedFor  uint32
+	voteGrant []uint32
+	log       Log
+	logInd    int32
+	status    string
 }
 
 //Contains volatile state of servers.
 type Volat_State struct {
 	commitIndex int32
 	lastApplied int32
-	timer       int32
-	status      string
-	logInd      int32
 }
 
 //Contains volatile state of the leader.
@@ -30,7 +30,7 @@ type Volat_LState struct {
 }
 
 type MyLog struct {
-	term uint32
+	term int32
 	log  string
 }
 
@@ -39,20 +39,11 @@ type Log struct {
 }
 
 //Contains all the state with respect to given machine.
-type Leader struct {
+
+type State_Machine struct {
 	Persi_State
+	Volat_State
 	Volat_LState
-	Volat_State
-}
-
-type Follower struct {
-	Persi_State
-	Volat_State
-}
-
-type Candidate struct {
-	Persi_State
-	Volat_State
 }
 
 //AppendEntriesRequest: Invoked by leader to replicate log entries and also used as heartbeat.
@@ -109,7 +100,7 @@ type Commit struct {
 
 //Send a Timeout after t milliseconds.
 type Alarm struct {
-	t uint32
+	t int
 }
 
 //This is an indication to the node to store the data at the given index.
@@ -124,39 +115,15 @@ type Reply struct {
 	ack interface{}
 }
 
-func (appReq AppEntrReq) alarm(sm State_Machine) State_Machine {
-	return sm
-}
-func (appResp AppEntrResp) alarm(sm State_Machine) State_Machine {
-	return sm
-}
-func (votReq VoteReq) alarm(sm State_Machine) State_Machine {
-	return sm
-}
-func (votResp VoteResp) alarm(sm State_Machine) State_Machine {
-	return sm
-}
-func (app Append) alarm(sm State_Machine) State_Machine {
-	return sm
-}
-func (appReq AppEntrReq) commit(sm State_Machine) State_Machine {
-	return sm
-}
-func (appResp AppEntrResp) commit(sm State_Machine) State_Machine {
-	return sm
-}
-func (votReq VoteReq) commit(sm State_Machine) State_Machine {
-	return sm
-}
-func (votResp VoteResp) commit(sm State_Machine) State_Machine {
-	return sm
-}
-func (to Timeout) commit(sm State_Machine) State_Machine {
-	return sm
-}
-func (app Append) send(sm State_Machine) State_Machine {
-	return sm
-}
-func (to Timeout) send(sm State_Machine) State_Machine {
-	return sm
-}
+func (appReq AppEntrReq) alarm(sm *State_Machine)    {}
+func (appResp AppEntrResp) alarm(sm *State_Machine)  {}
+func (votReq VoteReq) alarm(sm *State_Machine)       {}
+func (votResp VoteResp) alarm(sm *State_Machine)     {}
+func (app Append) alarm(sm *State_Machine)           {}
+func (appReq AppEntrReq) commit(sm *State_Machine)   {}
+func (appResp AppEntrResp) commit(sm *State_Machine) {}
+func (votReq VoteReq) commit(sm *State_Machine)      {}
+func (votResp VoteResp) commit(sm *State_Machine)    {}
+func (to Timeout) commit(sm *State_Machine)          {}
+func (app Append) send(sm *State_Machine)            {}
+func (to Timeout) send(sm *State_Machine)            {}
