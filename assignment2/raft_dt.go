@@ -1,17 +1,18 @@
 package main
 
 const (
-	FOLL = "follower"
-	CAND = "candidate"
-	LEAD = "leader"
+	FOLL  = "follower"
+	CAND  = "candidate"
+	LEAD  = "leader"
+	PEERS = 5
 )
 
 //Contains persistent state of all servers.
 type Persi_State struct {
-	id        uint32
-	currTerm  uint32
-	votedFor  uint32
-	voteGrant []uint32
+	id        int32
+	currTerm  int32
+	votedFor  int32
+	voteGrant [2]int32
 	log       Log
 	logInd    int32
 	status    string
@@ -48,31 +49,31 @@ type State_Machine struct {
 
 //AppendEntriesRequest: Invoked by leader to replicate log entries and also used as heartbeat.
 type AppEntrReq struct {
-	term       uint32
-	leaderId   uint32
+	term       int32
+	leaderId   int32
 	preLogInd  int32
-	preLogTerm uint32
+	preLogTerm int32
 	leaderCom  int32
 	log        Log
 }
 
 //AppendEntriesResponse: Invoked by servers on AppendEntriesRequest.
 type AppEntrResp struct {
-	term uint32
+	term int32
 	succ bool
 }
 
 //VoteRequest: Invoked by candidates to gather votes.
 type VoteReq struct {
-	term       uint32
-	candId     uint32
+	term       int32
+	candId     int32
 	preLogInd  int32
 	preLogTerm int32
 }
 
 //VoteResponse: Invoked by servers on VoteRequest.
 type VoteResp struct {
-	term      uint32
+	term      int32
 	voteGrant bool
 }
 
@@ -87,7 +88,7 @@ type Timeout struct {
 
 //Send this event to a remote node.
 type Send struct {
-	peerId []uint32
+	peerId int32
 	event  interface{}
 }
 
@@ -110,10 +111,6 @@ type LogStore struct {
 }
 
 //Returns respond to given request.
-type Reply struct {
-	//Maps different output event structures.
-	ack interface{}
-}
 
 func (appReq AppEntrReq) alarm(sm *State_Machine)    {}
 func (appResp AppEntrResp) alarm(sm *State_Machine)  {}
