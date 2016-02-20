@@ -56,7 +56,7 @@
 				
 				<option value="file0">github.com/saurabhjambhule/cs733/assignment2/raft_dt.go (0.0%)</option>
 				
-				<option value="file1">github.com/saurabhjambhule/cs733/assignment2/raft_sm.go (98.3%)</option>
+				<option value="file1">github.com/saurabhjambhule/cs733/assignment2/raft_sm.go (100.0%)</option>
 				
 				</select>
 			</div>
@@ -240,7 +240,7 @@ func (sm *State_Machine) candSys() <span class="cov8" title="1">{
         resp := Alarm{t: 150}
         actionCh &lt;- resp
         //Sending vote request null information of previous entry as Candidate had just joined the cluster.
-        if len(sm.log.log) == 0 </span><span class="cov0" title="0">{
+        if len(sm.log.log) == 0 </span><span class="cov8" title="1">{
                 respp := Send{peerId: 0, event: VoteReq{term: sm.currTerm, candId: sm.id, preLogInd: 0, preLogTerm: 0}}
                 actionCh &lt;- respp
                 return
@@ -426,26 +426,30 @@ func (appRes AppEntrResp) send(sm *State_Machine) <span class="cov8" title="1">{
 func (votReq VoteReq) send(sm *State_Machine) <span class="cov8" title="1">{
         switch sm.status </span>{
         <span class="cov8" title="1">case FOLL:
-                //If
+                //If candidate log is not uptodate or incoming term is lower or already voted in given term, then reply negative.
                 if votReq.term &lt; sm.currTerm || sm.votedFor != 0 || votReq.preLogInd &lt;= sm.logInd-1 </span><span class="cov8" title="1">{
                         resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
                         actionCh &lt;- resp
                         return
                 }</span>
+                //Vote to incomming candidate and set the votedFor to 1.
                 <span class="cov8" title="1">sm.votedFor = 1
                 sm.currTerm = votReq.term
                 resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: true}}
                 actionCh &lt;- resp</span>
 
         <span class="cov8" title="1">case CAND:
+                //Reject the incomming vote Request.
                 resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
                 actionCh &lt;- resp</span>
 
+        //Reply negative  in any case for vote request.
         <span class="cov8" title="1">case LEAD:
                 if sm.currTerm &gt; votReq.term </span><span class="cov8" title="1">{
                         resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
                         actionCh &lt;- resp
                 }</span>
+                //But if incomming term is higher than local, then step down to follower state.
                 <span class="cov8" title="1">if sm.currTerm &lt; votReq.term </span><span class="cov8" title="1">{
                         resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
                         actionCh &lt;- resp
@@ -493,14 +497,17 @@ func (votRes VoteResp) send(sm *State_Machine) <span class="cov8" title="1">{
 func (app Append) commit(sm *State_Machine) <span class="cov8" title="1">{
         switch sm.status </span>{
         <span class="cov8" title="1">case FOLL:
+                //Send Error.
                 resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
                 actionCh &lt;- resp</span>
 
         <span class="cov8" title="1">case CAND:
+                //Send Error.
                 resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
                 actionCh &lt;- resp</span>
 
         <span class="cov8" title="1">case LEAD:
+                //Append the commond into local log.
                 ind := sm.logInd
                 entry := Log{log: []MyLog{{0, " "}, {sm.currTerm, string(app.data)}}}
                 sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, sm.logInd-1, sm.log, entry)
@@ -508,6 +515,7 @@ func (app Append) commit(sm *State_Machine) <span class="cov8" title="1">{
                 entry11 := sm.log.log[temp:]
                 entry1 := Log{log: entry11}
                 resp := LogStore{index: ind, data: app.data}
+                //Send the append entry request to all other servers.
                 respp := Send{peerId: 0, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term, leaderCom: sm.commitIndex, log: entry1}}
                 actionCh &lt;- resp
                 actionCh &lt;- respp</span>
