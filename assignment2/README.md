@@ -1,8 +1,10 @@
 ## CS733 - Assignmet 1
-#**FILE SERVER**
+#**RAFT STATE MACHINE**
 
-###*Configuration Instructions -*
-      LevelDB - [Get LevelDB](go get github.com/syndtr/goleveldb/leveldb)
+###*File Description -*
+      1. raft_sm.go - Main algorithm implementation.
+      2. raft_dt.go - Type and function declaration.
+      3. raft_sm_test.go - All the test cases.
 
 ###*Operating Instructions -*
 ####    - Running Program :
