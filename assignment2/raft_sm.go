@@ -1,6 +1,7 @@
 package main
 
 import "reflect"
+import "math"
 
 //This deals with the incomming rquest and invokes repective response event.
 type Message interface {
@@ -29,7 +30,13 @@ func (sm *State_Machine) candSys() {
 	//Set election timeout
 	resp := Alarm{t: 150}
 	actionCh <- resp
-	//Send vote request to all other servers
+	//Sending vote request null information of previous entry as Candidate had just joined the cluster.
+	if len(sm.log.log) == 0 {
+		respp := Send{peerId: 0, event: VoteReq{term: sm.currTerm, candId: sm.id, preLogInd: 0, preLogTerm: 0}}
+		actionCh <- respp
+		return
+	}
+	//Send vote request to all other servers.
 	respp := Send{peerId: 0, event: VoteReq{term: sm.currTerm, candId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term}}
 	actionCh <- respp
 }
@@ -100,6 +107,7 @@ func (sm *State_Machine) eventProcess() {
 //Incoming log or any incoming variable means the log or variable form the given incomming request or respoonse msg.
 func (appReq AppEntrReq) send(sm *State_Machine) {
 	switch sm.status {
+	//For every incoming signal from leader to follower reset the timeout time as leader is still alive.
 	case FOLL:
 		//if follower dont have any entries in log meaning he just joined the cluster, then coppy incoming log to local log.
 		if len(sm.log.log) == 0 {
@@ -117,39 +125,44 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 			actionCh <- respp
 			return
 		}
+		//Send regative reply, if incoming term is lower than local term or previous index does not match.
 		if (sm.currTerm > appReq.term) || (appReq.preLogInd > sm.logInd-1) {
 			resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
-			respp := Alarm{t: 200}
 			actionCh <- resp
+			respp := Alarm{t: 200}
 			actionCh <- respp
 			return
 		}
+		//If log is NULL i.e. Heartbeat msg, reset the timeout.
 		if len(appReq.log.log) == 0 {
+			//Reset the timeout timer.
 			resp := Alarm{t: 200}
 			actionCh <- resp
 			return
 		}
+		//Send regative reply, if previous entry does not match.
 		if (appReq.preLogInd != sm.logInd-1) && (appReq.preLogTerm == sm.currTerm) || (!reflect.DeepEqual(sm.log.log[appReq.preLogInd], appReq.log.log[0])) {
 			resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
-			respp := Alarm{t: 200}
 			actionCh <- resp
+			respp := Alarm{t: 200}
 			actionCh <- respp
 			return
 		}
-		if appReq.leaderCom > sm.logInd {
-			sm.commitIndex = sm.logInd
-		} else {
-			sm.commitIndex = appReq.leaderCom
-		}
+		//Update local commitIndex with minimum of incomming leaderCommit and local log index
+		sm.commitIndex = int32(math.Min(float64(appReq.leaderCom), float64(sm.logInd-1)))
+		//Update local term to incomming term.
 		sm.currTerm = appReq.term
+		//Copy incoming log into local log.
 		sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, appReq.preLogInd, sm.log, appReq.log)
 		//Send possitive reply, as log has been copied to local log.
 		resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: true}}
-		respp := Alarm{t: 200}
 		actionCh <- resp
+		//Reset the timeout timer.
+		respp := Alarm{t: 200}
 		actionCh <- respp
 
 	case CAND:
+		//Become follower and amd process incomming append entry request, if incomming term higher than or eqaul(already have term) to local term.
 		if appReq.term >= sm.currTerm {
 			sm.status = FOLL
 			sm.votedFor = 0
@@ -157,10 +170,12 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 			appReq.send(sm)
 			return
 		}
+		//Reply negative if incomming term is lower.
 		resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
 		actionCh <- resp
 
 	case LEAD:
+		//Become a follower, if incomming term higher than local term.
 		if appReq.term > sm.currTerm {
 			resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
 			actionCh <- resp
@@ -168,6 +183,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 			sm.follSys()
 			return
 		}
+		//Reply negative if incomming term is lower.
 		resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
 		actionCh <- resp
 	}
@@ -178,21 +194,21 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 func (appRes AppEntrResp) send(sm *State_Machine) {
 	switch sm.status {
 	case LEAD:
+		//On positive response, update matchIndex and nextIndex.
 		if appRes.succ == true {
-
 			sm.matchIndex[peer[appRes.peer]] = sm.logInd - 1
 			sm.nextIndex[peer[appRes.peer]] = sm.logInd
-
 		}
+		//On negative response, decreament the nextIndex with respect to incomming peer and resend append entry request.
 		if appRes.succ == false {
 			sm.nextIndex[peer[appRes.peer]] -= 1
 			temp := sm.nextIndex[peer[appRes.peer]] - 1
 			entry := sm.log.log[temp:]
 			entry1 := Log{log: entry}
+			//Check for log to be commited.
 			sm.commitLog()
 			resp := Send{peerId: appRes.peer, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: temp, preLogTerm: sm.log.log[temp].term, leaderCom: sm.commitIndex, log: entry1}}
 			actionCh <- resp
-
 		}
 	}
 }
@@ -201,25 +217,30 @@ func (appRes AppEntrResp) send(sm *State_Machine) {
 func (votReq VoteReq) send(sm *State_Machine) {
 	switch sm.status {
 	case FOLL:
-		if votReq.term < sm.currTerm || sm.votedFor != 0 || votReq.preLogInd <= +sm.logInd-1 {
+		//If candidate log is not uptodate or incoming term is lower or already voted in given term, then reply negative.
+		if votReq.term < sm.currTerm || sm.votedFor != 0 || votReq.preLogInd <= sm.logInd-1 {
 			resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
 			actionCh <- resp
 			return
 		}
+		//Vote to incomming candidate and set the votedFor to 1.
 		sm.votedFor = 1
 		sm.currTerm = votReq.term
 		resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: true}}
 		actionCh <- resp
 
 	case CAND:
+		//Reject the incomming vote Request.
 		resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
 		actionCh <- resp
 
+	//Reply negative  in any case for vote request.
 	case LEAD:
 		if sm.currTerm > votReq.term {
 			resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
 			actionCh <- resp
 		}
+		//But if incomming term is higher than local, then step down to follower state.
 		if sm.currTerm < votReq.term {
 			resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
 			actionCh <- resp
@@ -267,14 +288,17 @@ func (votRes VoteResp) send(sm *State_Machine) {
 func (app Append) commit(sm *State_Machine) {
 	switch sm.status {
 	case FOLL:
+		//Send Error.
 		resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
 		actionCh <- resp
 
 	case CAND:
+		//Send Error.
 		resp := Commit{data: []byte("5000"), err: []byte("I'm not leader")}
 		actionCh <- resp
 
 	case LEAD:
+		//Append the commond into local log.
 		ind := sm.logInd
 		entry := Log{log: []MyLog{{0, " "}, {sm.currTerm, string(app.data)}}}
 		sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, sm.logInd-1, sm.log, entry)
@@ -282,6 +306,7 @@ func (app Append) commit(sm *State_Machine) {
 		entry11 := sm.log.log[temp:]
 		entry1 := Log{log: entry11}
 		resp := LogStore{index: ind, data: app.data}
+		//Send the append entry request to all other servers.
 		respp := Send{peerId: 0, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term, leaderCom: sm.commitIndex, log: entry1}}
 		actionCh <- resp
 		actionCh <- respp

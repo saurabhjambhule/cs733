@@ -210,6 +210,7 @@ func (to Timeout) alarm(sm1 *State_Machine)          <span class="cov0" title="0
 		<pre class="file" id="file1" style="display: none">package main
 
 import "reflect"
+import "math"
 
 //This deals with the incomming rquest and invokes repective response event.
 type Message interface {
@@ -238,10 +239,16 @@ func (sm *State_Machine) candSys() <span class="cov8" title="1">{
         //Set election timeout
         resp := Alarm{t: 150}
         actionCh &lt;- resp
-        //Send vote request to all other servers
-        respp := Send{peerId: 0, event: VoteReq{term: sm.currTerm, candId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term}}
-        actionCh &lt;- respp
-}</span>
+        //Sending vote request null information of previous entry as Candidate had just joined the cluster.
+        if len(sm.log.log) == 0 </span><span class="cov0" title="0">{
+                respp := Send{peerId: 0, event: VoteReq{term: sm.currTerm, candId: sm.id, preLogInd: 0, preLogTerm: 0}}
+                actionCh &lt;- respp
+                return
+        }</span>
+        //Send vote request to all other servers.
+        <span class="cov8" title="1">respp := Send{peerId: 0, event: VoteReq{term: sm.currTerm, candId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term}}
+        actionCh &lt;- respp</span>
+}
 
 //Function for state to become leader.
 func (sm *State_Machine) leadSys() <span class="cov8" title="1">{
@@ -309,6 +316,7 @@ func (sm *State_Machine) eventProcess() <span class="cov8" title="1">{
 //Incoming log or any incoming variable means the log or variable form the given incomming request or respoonse msg.
 func (appReq AppEntrReq) send(sm *State_Machine) <span class="cov8" title="1">{
         switch sm.status </span>{
+        //For every incoming signal from leader to follower reset the timeout time as leader is still alive.
         <span class="cov8" title="1">case FOLL:
                 //if follower dont have any entries in log meaning he just joined the cluster, then coppy incoming log to local log.
                 if len(sm.log.log) == 0 </span><span class="cov8" title="1">{
@@ -326,39 +334,44 @@ func (appReq AppEntrReq) send(sm *State_Machine) <span class="cov8" title="1">{
                         actionCh &lt;- respp
                         return</span>
                 }
+                //Send regative reply, if incoming term is lower than local term or previous index does not match.
                 <span class="cov8" title="1">if (sm.currTerm &gt; appReq.term) || (appReq.preLogInd &gt; sm.logInd-1) </span><span class="cov8" title="1">{
                         resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
-                        respp := Alarm{t: 200}
                         actionCh &lt;- resp
+                        respp := Alarm{t: 200}
                         actionCh &lt;- respp
                         return
                 }</span>
+                //If log is NULL i.e. Heartbeat msg, reset the timeout.
                 <span class="cov8" title="1">if len(appReq.log.log) == 0 </span><span class="cov8" title="1">{
+                        //Reset the timeout timer.
                         resp := Alarm{t: 200}
                         actionCh &lt;- resp
                         return
                 }</span>
+                //Send regative reply, if previous entry does not match.
                 <span class="cov8" title="1">if (appReq.preLogInd != sm.logInd-1) &amp;&amp; (appReq.preLogTerm == sm.currTerm) || (!reflect.DeepEqual(sm.log.log[appReq.preLogInd], appReq.log.log[0])) </span><span class="cov8" title="1">{
                         resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
-                        respp := Alarm{t: 200}
                         actionCh &lt;- resp
+                        respp := Alarm{t: 200}
                         actionCh &lt;- respp
                         return
                 }</span>
-                <span class="cov8" title="1">if appReq.leaderCom &gt; sm.logInd </span><span class="cov0" title="0">{
-                        sm.commitIndex = sm.logInd
-                }</span><span class="cov8" title="1"> else {
-                        sm.commitIndex = appReq.leaderCom
-                }</span>
-                <span class="cov8" title="1">sm.currTerm = appReq.term
+                //Update local commitIndex with minimum of incomming leaderCommit and local log index
+                <span class="cov8" title="1">sm.commitIndex = int32(math.Min(float64(appReq.leaderCom), float64(sm.logInd-1)))
+                //Update local term to incomming term.
+                sm.currTerm = appReq.term
+                //Copy incoming log into local log.
                 sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, appReq.preLogInd, sm.log, appReq.log)
                 //Send possitive reply, as log has been copied to local log.
                 resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: true}}
-                respp := Alarm{t: 200}
                 actionCh &lt;- resp
+                //Reset the timeout timer.
+                respp := Alarm{t: 200}
                 actionCh &lt;- respp</span>
 
         <span class="cov8" title="1">case CAND:
+                //Become follower and amd process incomming append entry request, if incomming term higher than or eqaul(already have term) to local term.
                 if appReq.term &gt;= sm.currTerm </span><span class="cov8" title="1">{
                         sm.status = FOLL
                         sm.votedFor = 0
@@ -366,10 +379,12 @@ func (appReq AppEntrReq) send(sm *State_Machine) <span class="cov8" title="1">{
                         appReq.send(sm)
                         return
                 }</span>
+                //Reply negative if incomming term is lower.
                 <span class="cov8" title="1">resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
                 actionCh &lt;- resp</span>
 
         <span class="cov8" title="1">case LEAD:
+                //Become a follower, if incomming term higher than local term.
                 if appReq.term &gt; sm.currTerm </span><span class="cov8" title="1">{
                         resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
                         actionCh &lt;- resp
@@ -377,6 +392,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) <span class="cov8" title="1">{
                         sm.follSys()
                         return
                 }</span>
+                //Reply negative if incomming term is lower.
                 <span class="cov8" title="1">resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
                 actionCh &lt;- resp</span>
         }
@@ -387,21 +403,21 @@ func (appReq AppEntrReq) send(sm *State_Machine) <span class="cov8" title="1">{
 func (appRes AppEntrResp) send(sm *State_Machine) <span class="cov8" title="1">{
         switch sm.status </span>{
         <span class="cov8" title="1">case LEAD:
+                //On positive response, update matchIndex and nextIndex.
                 if appRes.succ == true </span><span class="cov8" title="1">{
-
                         sm.matchIndex[peer[appRes.peer]] = sm.logInd - 1
                         sm.nextIndex[peer[appRes.peer]] = sm.logInd
-
                 }</span>
+                //On negative response, decreament the nextIndex with respect to incomming peer and resend append entry request.
                 <span class="cov8" title="1">if appRes.succ == false </span><span class="cov8" title="1">{
                         sm.nextIndex[peer[appRes.peer]] -= 1
                         temp := sm.nextIndex[peer[appRes.peer]] - 1
                         entry := sm.log.log[temp:]
                         entry1 := Log{log: entry}
+                        //Check for log to be commited.
                         sm.commitLog()
                         resp := Send{peerId: appRes.peer, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: temp, preLogTerm: sm.log.log[temp].term, leaderCom: sm.commitIndex, log: entry1}}
                         actionCh &lt;- resp
-
                 }</span>
         }
 }
@@ -410,7 +426,8 @@ func (appRes AppEntrResp) send(sm *State_Machine) <span class="cov8" title="1">{
 func (votReq VoteReq) send(sm *State_Machine) <span class="cov8" title="1">{
         switch sm.status </span>{
         <span class="cov8" title="1">case FOLL:
-                if votReq.term &lt; sm.currTerm || sm.votedFor != 0 || votReq.preLogInd &lt;= +sm.logInd-1 </span><span class="cov8" title="1">{
+                //If
+                if votReq.term &lt; sm.currTerm || sm.votedFor != 0 || votReq.preLogInd &lt;= sm.logInd-1 </span><span class="cov8" title="1">{
                         resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
                         actionCh &lt;- resp
                         return
@@ -449,7 +466,7 @@ func (votRes VoteResp) send(sm *State_Machine) <span class="cov8" title="1">{
                 //Count incomming negative responses.
                 <span class="cov8" title="1">if votRes.voteGrant == false </span><span class="cov8" title="1">{
                         sm.voteGrant[1] += 1
-                        if votRes.term &gt; sm.currTerm </span><span class="cov0" title="0">{
+                        if votRes.term &gt; sm.currTerm </span><span class="cov8" title="1">{
                                 sm.follSys()
                                 return
                         }</span>

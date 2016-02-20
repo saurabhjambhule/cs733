@@ -19,21 +19,30 @@ type TestCases struct {
 
 //Initializing Testing.
 func TestRaftSM(t *testing.T) {
+	//Initializing peers.
 	peer = make(map[int32]int32)
 	peer[1000] = 0
 	peer[1001] = 1
 	peer[2000] = 2
 	peer[3000] = 3
 	peer[5000] = 4
+	//Initializing state machine as Follower.
 	sm := State_Machine{Persi_State: Persi_State{id: 1000, status: FOLL, currTerm: 1, logInd: 0}, Volat_State: Volat_State{commitIndex: 0, lastApplied: 0}}
+	//Follower state testing.
 	sm.FollTesting(t)
+	//Candidate state testing.
 	sm.CandTesting(t)
+	//creating multiple copies of state machime in candidate state for testing purpose.
 	sm1 := sm
 	sm2 := sm
 	sm3 := sm
+	//Testing leader with timeout, append and vote requests.
 	sm.LeadTesting(t)
+	//Testing leader with append entry request.
 	sm1.LeadTesting1(t)
+	//Testing leader with append entry response.
 	sm2.LeadTesting2(t)
+	//Testing leader for committing log.
 	sm3.LeadTesting3(t)
 }
 
@@ -265,6 +274,7 @@ func (sm *State_Machine) CandTesting(t *testing.T) {
 	follTC.respExp = Send{peerId: 0, event: VoteReq{term: 6, candId: 1000, preLogInd: 3, preLogTerm: 2}} //also the vote request
 	follTC.expect()
 
+	/* Sending vote response*/
 	//sending possitive vote response.
 	//-->Expected cadidate to become leader and send heartbeat msg to other servers.
 	follTC.req = VoteResp{term: 4, voteGrant: true}
@@ -300,6 +310,17 @@ func (sm *State_Machine) CandTesting(t *testing.T) {
 	follTC.resp = <-actionCh
 	follTC.expect()
 
+	//sending vote response with higher term.
+	sm3 := State_Machine{Persi_State: Persi_State{id: 1000, status: CAND, currTerm: 3, logInd: 4}, Volat_State: Volat_State{commitIndex: 2, lastApplied: 0}}
+	follTC.req = VoteResp{term: 5, voteGrant: false}
+	netCh <- follTC.req
+	sm3.eventProcess()
+	netCh <- follTC.req
+	sm1.eventProcess()
+	follTC.respExp = Alarm{t: 200}
+	follTC.resp = <-actionCh
+	follTC.expect()
+
 	//Suppose due to cluster partition cadidate gets two positive and two negative responses.
 	//-->Expect to start re-election.
 	sm2 := State_Machine{Persi_State: Persi_State{id: 1000, status: CAND, currTerm: 3, logInd: 4}, Volat_State: Volat_State{commitIndex: 2, lastApplied: 0}}
@@ -324,6 +345,26 @@ func (sm *State_Machine) CandTesting(t *testing.T) {
 	follTC.respExp = Send{peerId: 0, event: VoteReq{term: 4, candId: 1000, preLogInd: 3, preLogTerm: 2}} //also the vote request
 	follTC.expect()
 
+	/*Testing a follower  with no log entry became candidate and sends vote request*/
+	sm5 := State_Machine{Persi_State: Persi_State{id: 3000, status: FOLL, currTerm: 1, logInd: 0}, Volat_State: Volat_State{commitIndex: 0, lastApplied: 0}}
+	//sending vote request from very new candidate to very new follower.
+	follTC.req = VoteReq{term: 2, candId: 3000, preLogInd: 0, preLogTerm: 0}
+	follTC.respExp = Send{peerId: 3000, event: VoteResp{term: 2, voteGrant: true}}
+	netCh <- follTC.req
+	sm5.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	//Sending timeout to follower, SM can become candidate
+	follTC.req = Timeout{}
+	follTC.respExp = Alarm{t: 150}
+	timeoutCh <- follTC.req
+	sm5.eventProcess()
+	follTC.resp = <-actionCh //expecting alarm signal
+	follTC.expect()
+	follTC.resp = <-actionCh
+	follTC.respExp = Send{peerId: 0, event: VoteReq{term: 3, candId: 3000, preLogInd: 0, preLogTerm: 0}} //also the vote request
+	follTC.expect()
 }
 
 //Testing various scenarios against Leader state.
@@ -440,7 +481,7 @@ func (sm *State_Machine) LeadTesting2(t *testing.T) {
 	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 4, preLogTerm: 6, leaderCom: 0, log: entry}}
 	follTC.expect()
 
-	/*Sending vote response*/
+	/*Sending append entry response*/
 	//sending positive append entry response with lower term.
 	follTC.req = AppEntrResp{peer: 1000, term: 6, succ: true}
 	netCh <- follTC.req
@@ -500,17 +541,21 @@ func (sm *State_Machine) LeadTesting3(t *testing.T) {
 	//<<<|id:1000|status:leader|currTerm:6|logInd:8|votedFor:0|commitInd:1|>>>
 }
 
+//Coppying append command into log.
 func enterLog(mylog MyLog) Log {
 	var log1 Log
 	log1.log = append(log1.log, mylog)
 	return log1
 }
 
+//Evaluating expected and recieved event responses.
 func (tc TestCases) expect() {
 	if !reflect.DeepEqual(tc.resp, tc.respExp) {
 		tc.t.Error(fmt.Sprintf("\nRequested: ", tc.req, "\nExpected: ", tc.respExp, "\nFound: ", tc.resp))
 	}
 }
+
+//Evaluating expected and recieved  numerical responses.
 func expectNum(t *testing.T, res1 int32, exp1 int32, res2 int32, exp2 int32) {
 	if res1 != exp1 {
 		t.Error(fmt.Sprintf("\nExpected: ", exp1, "\nFound: ", res1))
