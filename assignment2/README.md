@@ -1,42 +1,32 @@
-## CS733 - Assignmet 1
-#**FILE SERVER**
+## CS733 - Assignmet 2
+#**RAFT STATE MACHINE**
 
 ###*Configuration Instructions -*
       LevelDB - [Get LevelDB](go get github.com/syndtr/goleveldb/leveldb)
 
 ###*Operating Instructions -*
 ####    - Running Program :
-          1. Run SERVER : go run server.go
-          2. Run CLIENT : go run client.go
+          1. Run SERVER : go run raft_sm.go
+          2. Run Test Cases : go test
  
-####     - Client Side Menu :
+####     - Input Events to SM :
       
-          1. Write - Create a File, or update the file’s contents if it already exists.
-                  write <filename> <numbytes> [<exptime>]\r\n
-                  <content bytes>\r\n
-          2. Read - Given a Filename, retrieve the corresponding file.
-                  read <filename>\r\n
-          3. Compare & Swap - This replaces the old file contents with the new content provided the version is still the same.
-                  cas <filename> <version> <numbytes> [<exptime>]\r\n
-                  <content bytes>\r\n
-          4. Append - This appends the old file contents with the new content provided the version changes.
-                  append <filename> <bytes>
-                  <content bytes>\r\n
-          5. Delete - Delete File.
-                  delete <filename>\r\n
-  
-####     - Error Messages :
-          1. ERR_VERSION <version> - The contents were not updated because of a version mismatch & provides current version.
-          2. ERR_FILE_NOT_FOUND - The filename doesn’t exist.
-          3. ERR_CMD_ERR - The command is not formatted correctly.
-          4. ERR_INTERNAL - Any other error you wish to report that is not covered by the rest.
-  
-### *REFERANCE CODE -*
+            1. Append(data:[]byte): This is a request from the layer above to append the data to the replicated log. The                    response is in the form of an eventual Commit action (see next section).
+            2. Timeout : A timeout event is interpreted according to the state. If the state machine is a leader, it is                        interpreted as a heartbeat timeout, and if it is a follower or candidate, it is interpreted as an election                   timeout.
+            3. AppendEntriesReq: Message from another Raft state machine. For this and the next three event types, the                         parameters to the messages can be taken from the Raft paper.
+            4. AppendEntriesResp: Response from another Raft state machine in response to a previous AppendEntriesReq.
+            5. VoteReq: Message from another Raft state machine to request votes for its candidature.
+            6. VoteResp: Response to a Vote request.
 
-  * [Build Web Application with Golang](https://astaxie.gitbooks.io/build-web-application-with-golang/content/en/08.0.html)
-  * [Network programming with Go](https://jan.newmarch.name/go/)
-  * [Syndtr/goLevelDB](https://godoc.org/github.com/syndtr/goleveldb/leveldb)
-  * *STACK OVERFLOW* 
+####     - Output Events by SM :
+            1. Send(peerId, event). Send this event to a remote node. The event is one of AppendEntriesReq/Resp or VoteReq/                    Resp. Clearly the state machine needs to have some information about its peer node ids and its own id.
+            2. Commit(index, data, err): Deliver this commit event (index + data) or report an error (data + err) to the                       layer above. This is the response to the Append event.
+            3. Alarm(t): Send a Timeout after t milliseconds.
+            4. LogStore(index, data []byte): This is an indication to the node to store the data at the given index. Note                      that data here can refer to the client’s
+####     - Error Messages :
+          1. I an not leader - Append request recieved by Follower instead of Leader.
+      
+
   
 
 
