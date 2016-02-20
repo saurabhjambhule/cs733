@@ -1,4 +1,4 @@
-## CS733 - Assignmet 1
+## CS733 - Assignmet 2
 #**RAFT STATE MACHINE**
 
 ###*File Description -*
