@@ -12,8 +12,8 @@ github.com/saurabhjambhule/cs733/assignment2/raft_dt.go:132.54,132.56 0 0
 github.com/saurabhjambhule/cs733/assignment2/raft_dt.go:133.54,133.56 0 0
 github.com/saurabhjambhule/cs733/assignment2/raft_dt.go:134.54,134.56 0 0
 github.com/saurabhjambhule/cs733/assignment2/raft_dt.go:135.54,135.56 0 0
-github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:14.36,20.2 4 1
-github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:23.36,34.26 8 1
+github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:15.36,21.2 4 1
+github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:24.36,34.26 8 1
 github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:40.2,41.19 2 1
 github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:34.26,38.3 3 1
 github.com/saurabhjambhule/cs733/assignment2/raft_sm.go:45.36,56.2 7 1

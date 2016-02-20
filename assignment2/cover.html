@@ -210,6 +210,7 @@ func (to Timeout) alarm(sm1 *State_Machine)          <span class="cov0" title="0
 		<pre class="file" id="file1" style="display: none">package main
 
 import "reflect"
+
 import "math"
 
 //This deals with the incomming rquest and invokes repective response event.
@@ -230,7 +231,6 @@ func (sm *State_Machine) follSys() <span class="cov8" title="1">{
 
 //Function for state to become candidate.
 func (sm *State_Machine) candSys() <span class="cov8" title="1">{
-
         sm.status = CAND    //Change state status to candidate
         sm.currTerm += 1    //Increament the term
         sm.votedFor = sm.id //Vote for self

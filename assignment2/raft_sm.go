@@ -1,6 +1,7 @@
 package main
 
 import "reflect"
+
 import "math"
 
 //This deals with the incomming rquest and invokes repective response event.
@@ -21,7 +22,6 @@ func (sm *State_Machine) follSys() {
 
 //Function for state to become candidate.
 func (sm *State_Machine) candSys() {
-
 	sm.status = CAND    //Change state status to candidate
 	sm.currTerm += 1    //Increament the term
 	sm.votedFor = sm.id //Vote for self
