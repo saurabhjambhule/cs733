@@ -43,6 +43,7 @@ func (sm *State_Machine) candSys() {
 func (sm *State_Machine) leadSys() {
 	sm.status = LEAD
 	sm.votedFor = 0
+	sm.initialize()
 	resp := Alarm{t: 175}
 	respp := Send{peerId: 0, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term, leaderCom: sm.commitIndex}}
 	actionCh <- resp
@@ -168,11 +169,50 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		actionCh <- resp
 
 	case LEAD:
+		if appReq.term > sm.currTerm {
+			resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
+			actionCh <- resp
+			sm.currTerm = appReq.term
+			sm.follSys()
+			return
+		}
+		resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
+		actionCh <- resp
 	}
 	return
 }
 
 func (appRes AppEntrResp) send(sm *State_Machine) {
+	switch sm.status {
+	case FOLL:
+
+	case CAND:
+
+	case LEAD:
+		if appRes.succ == true {
+
+			sm.matchIndex[peer[appRes.peer]] = sm.logInd - 1
+			sm.nextIndex[peer[appRes.peer]] = sm.logInd
+
+		}
+		if appRes.succ == false {
+			fmt.Println("------>>", sm.matchIndex)
+			fmt.Println("------>>", sm.nextIndex)
+			sm.nextIndex[peer[appRes.peer]] -= 1
+			temp := sm.nextIndex[peer[appRes.peer]] - 1
+			entry := sm.log.log[temp:]
+			entry1 := Log{log: entry}
+			fmt.Println("!!------>>", entry1)
+			fmt.Println("------>>", sm.matchIndex)
+			fmt.Println("------>>", sm.nextIndex)
+			resp := Send{peerId: appRes.peer, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: temp, preLogTerm: sm.log.log[temp].term, leaderCom: sm.commitIndex, log: entry1}}
+			fmt.Println(resp)
+			fmt.Println("###@@@", sm.log)
+
+			actionCh <- resp
+
+		}
+	}
 }
 
 func (votReq VoteReq) send(sm *State_Machine) {
@@ -193,7 +233,16 @@ func (votReq VoteReq) send(sm *State_Machine) {
 		actionCh <- resp
 
 	case LEAD:
-		fmt.Println(sm.status)
+		if sm.currTerm > votReq.term {
+			resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
+			actionCh <- resp
+		}
+		if sm.currTerm < votReq.term {
+			resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
+			actionCh <- resp
+			sm.currTerm = votReq.term
+			sm.follSys()
+		}
 	}
 }
 
@@ -232,6 +281,7 @@ func (votRes VoteResp) send(sm *State_Machine) {
 		}
 
 	case LEAD:
+
 	}
 }
 
@@ -247,13 +297,35 @@ func (app Append) commit(sm *State_Machine) {
 		fmt.Println(sm.status)
 
 	case LEAD:
-		fmt.Println(sm.status)
+		ind := sm.logInd
+		entry := Log{log: []MyLog{{0, " "}, {sm.currTerm, string(app.data)}}}
+		sm.logInd, sm.log = copyLog(sm.currTerm, sm.logInd, sm.logInd-1, sm.log, entry)
+		temp := len(sm.log.log) - 2
+		entry11 := sm.log.log[temp:]
+		entry1 := Log{log: entry11}
+		resp := LogStore{index: ind, data: app.data}
+		respp := Send{peerId: 0, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term, leaderCom: sm.commitIndex, log: entry1}}
+		actionCh <- resp
+		actionCh <- respp
 	}
-
 }
 
-func (to Timeout) alarm(sm1 *State_Machine) {
-
+func (sm *State_Machine) commitLog() {
+	for i := sm.commitIndex + 1; i <= sm.logInd; i++ {
+		if sm.log.log[i].term != sm.currTerm {
+			continue
+		}
+		count := 0
+		for j := 0; j < 5; j++ {
+			if sm.matchIndex[j] >= i {
+				count += 1
+			}
+		}
+		if count >= 3 {
+			sm.commitIndex = i
+			break
+		}
+	}
 }
 
 //Used to copy log from given request to state machine.
@@ -264,6 +336,13 @@ func copyLog(term int32, myInd int32, preInd int32, oldLog Log, newLog Log) (int
 		myInd++
 	}
 	return myInd, oldLog
+}
+
+func (sm *State_Machine) initialize() {
+	for i := 0; i < 5; i++ {
+		sm.matchIndex[i] = 0
+		sm.nextIndex[i] = sm.logInd
+	}
 }
 
 //Channel declaration for listening to incomming requests.

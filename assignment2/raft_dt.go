@@ -26,8 +26,8 @@ type Volat_State struct {
 
 //Contains volatile state of the leader.
 type Volat_LState struct {
-	nextIndex  int32
-	matchIndex []int32
+	nextIndex  [5]int32
+	matchIndex [5]int32
 }
 
 type MyLog struct {
@@ -38,6 +38,8 @@ type MyLog struct {
 type Log struct {
 	log []MyLog
 }
+
+var peer map[int32]int32
 
 //Contains all the state with respect to given machine.
 
@@ -59,6 +61,7 @@ type AppEntrReq struct {
 
 //AppendEntriesResponse: Invoked by servers on AppendEntriesRequest.
 type AppEntrResp struct {
+	peer int32
 	term int32
 	succ bool
 }
@@ -124,3 +127,4 @@ func (votResp VoteResp) commit(sm *State_Machine)    {}
 func (to Timeout) commit(sm *State_Machine)          {}
 func (app Append) send(sm *State_Machine)            {}
 func (to Timeout) send(sm *State_Machine)            {}
+func (to Timeout) alarm(sm1 *State_Machine)          {}

@@ -19,10 +19,20 @@ type TestCases struct {
 
 //Initializing Testing.
 func TestRaftSM(t *testing.T) {
+	peer = make(map[int32]int32)
+	peer[1000] = 0
+	peer[1001] = 1
+	peer[2000] = 2
+	peer[3000] = 3
+	peer[5000] = 4
 	sm := State_Machine{Persi_State: Persi_State{id: 1000, status: FOLL, currTerm: 1, logInd: 0}, Volat_State: Volat_State{commitIndex: 0, lastApplied: 0}}
 	sm.FollTesting(t)
 	sm.CandTesting(t)
+	sm1 := sm
+	sm2 := sm
 	sm.LeadTesting(t)
+	sm1.LeadTesting1(t)
+	sm2.LeadTesting2(t)
 }
 
 //Testing various scenarios against Follower state.
@@ -131,7 +141,6 @@ func (sm *State_Machine) FollTesting(t *testing.T) {
 	follTC.expect()
 
 	/*Sending vote request*/
-
 	//sending vote request with lower term.
 	follTC.req = VoteReq{term: 1, candId: 2000, preLogInd: 1, preLogTerm: 1}
 	follTC.respExp = Send{peerId: 2000, event: VoteResp{term: 2, voteGrant: false}}
@@ -207,7 +216,6 @@ func (sm *State_Machine) CandTesting(t *testing.T) {
 	follTC.resp = <-actionCh
 	follTC.expect()
 
-	/* Sending append request */
 	//sending append request with lower term
 	//-->Expected Candidate to reject append request response.
 	entries := Log{log: []MyLog{{1, "read test"}}}
@@ -273,7 +281,7 @@ func (sm *State_Machine) CandTesting(t *testing.T) {
 	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 3, preLogTerm: 2, leaderCom: 0}}
 	follTC.expect()
 
-	//<<<|id:1000|status:follower|currTerm:3|logIng:4|votedFor:1|commitInd:2|lastApp:0|>>>
+	//<<<|id:1000|status:follower|currTerm:3|logInd:4|votedFor:1|commitInd:2|lastApp:0|>>>
 
 	//sending negative vote response.
 	sm1 := State_Machine{Persi_State: Persi_State{id: 1001, status: CAND, currTerm: 3, logInd: 4}, Volat_State: Volat_State{commitIndex: 2, lastApplied: 0}}
@@ -322,7 +330,7 @@ func (sm *State_Machine) LeadTesting(t *testing.T) {
 	follTC.t = t
 	var cmdReq = []string{"rename test"}
 
-	//<<<|id:1000|status:leader|currTerm:6|logIng:4|votedFor:0|commitInd:0|>>>
+	//<<<|id:1000|status:leader|currTerm:6|logInd:4|votedFor:0|commitInd:0|>>>
 
 	/*Sending timeout*/
 	//-->Expected to send heartbeat msg to all server.
@@ -333,14 +341,121 @@ func (sm *State_Machine) LeadTesting(t *testing.T) {
 	follTC.resp = <-actionCh
 	follTC.expect()
 
-	/* Sending an apped request */
+	/* Sending an append request*/
+	//-->Expeced LogStore msg and Appendentry request to all servers containg current and previous entry.
+	entry := Log{log: []MyLog{sm.log.log[sm.logInd-1], {6, "rename test"}}}
 	follTC.req = Append{data: []byte(cmdReq[0])}
-	follTC.respExp = Commit{data: []byte("5000"), err: []byte("I'm not leader")}
+	follTC.respExp = LogStore{index: 4, data: []byte(cmdReq[0])}
 	clientCh <- follTC.req
 	sm.eventProcess()
 	follTC.resp = <-actionCh
 	follTC.expect()
+	follTC.resp = <-actionCh
+	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 4, preLogTerm: 6, leaderCom: 0, log: entry}}
+	follTC.expect()
 
+	/* Sending vote request*/
+	//sending vote request with lower term.
+	follTC.req = VoteReq{term: 4, candId: 2000, preLogInd: 1, preLogTerm: 1}
+	follTC.respExp = Send{peerId: 2000, event: VoteResp{term: 6, voteGrant: false}}
+	netCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	//sending vote request with higher term.
+	//-->Expected to step down to Follower and as follower send Alarm signal.
+	follTC.req = VoteReq{term: 8, candId: 2000, preLogInd: 3, preLogTerm: 2}
+	follTC.respExp = Send{peerId: 2000, event: VoteResp{term: 6, voteGrant: false}}
+	netCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+	follTC.resp = <-actionCh
+	follTC.respExp = Alarm{t: 200}
+	follTC.expect()
+}
+
+func (sm *State_Machine) LeadTesting1(t *testing.T) {
+	var follTC TestCases
+	follTC.t = t
+	var cmdReq = []string{"rename test"}
+
+	//<<<|id:1000|status:leader|currTerm:6|logInd:5|votedFor:0|commitInd:0|>>>
+
+	/* Sending an append request*/
+	entry := Log{log: []MyLog{sm.log.log[sm.logInd-1], {6, "rename test"}}}
+	follTC.req = Append{data: []byte(cmdReq[0])}
+	follTC.respExp = LogStore{index: 4, data: []byte(cmdReq[0])}
+	clientCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+	follTC.resp = <-actionCh
+	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 4, preLogTerm: 6, leaderCom: 0, log: entry}}
+	follTC.expect()
+
+	/* Sending an append entry request*/
+	//sending append request with lower term
+	//-->Expected Candidate to reject append request response.
+	entries := Log{log: []MyLog{{1, "read test"}}}
+	follTC.req = AppEntrReq{term: 4, leaderId: 5000, preLogInd: 0, preLogTerm: 2, log: entries, leaderCom: 1}
+	follTC.respExp = Send{peerId: 5000, event: AppEntrResp{term: 6, succ: false}}
+	netCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	//sending append request with higher term
+	//-->Expected Leader to become Follower And send Alarm msg from follower.
+	follTC.req = AppEntrReq{term: 7, leaderId: 5000, preLogInd: 4, preLogTerm: 2, log: entries, leaderCom: 1}
+	follTC.respExp = Send{peerId: 5000, event: AppEntrResp{term: 6, succ: false}}
+	netCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+	follTC.resp = <-actionCh
+	follTC.respExp = Alarm{t: 200}
+	follTC.expect()
+}
+
+func (sm *State_Machine) LeadTesting2(t *testing.T) {
+	var follTC TestCases
+	follTC.t = t
+	var cmdReq = []string{"rename test"}
+
+	//<<<|id:1000|status:leader|currTerm:6|logInd:5|votedFor:0|commitInd:0|>>>
+
+	/* Sending an append request*/
+	entry := Log{log: []MyLog{sm.log.log[sm.logInd-1], {6, "rename test"}}}
+	follTC.req = Append{data: []byte(cmdReq[0])}
+	follTC.respExp = LogStore{index: 4, data: []byte(cmdReq[0])}
+	clientCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+	follTC.resp = <-actionCh
+	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 4, preLogTerm: 6, leaderCom: 0, log: entry}}
+	follTC.expect()
+
+	/*Sending vote response*/
+	//sending positive append entry response with lower term.
+	follTC.req = AppEntrResp{peer: 1000, term: 6, succ: true}
+	netCh <- follTC.req
+	sm.eventProcess()
+
+	//sending negative append entry response with lower term.
+	temp := sm.nextIndex[peer[2000]] - 2
+	entry2 := sm.log.log[temp:]
+	entry1 := Log{log: entry2}
+	follTC.req = AppEntrResp{peer: 2000, term: 6, succ: false}
+	follTC.respExp = Send{peerId: 2000, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 2, preLogTerm: 1, leaderCom: 0, log: entry1}}
+	netCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	fmt.Println(sm)
 }
 
 func enterLog(mylog MyLog) Log {
