@@ -30,9 +30,11 @@ func TestRaftSM(t *testing.T) {
 	sm.CandTesting(t)
 	sm1 := sm
 	sm2 := sm
+	sm3 := sm
 	sm.LeadTesting(t)
 	sm1.LeadTesting1(t)
 	sm2.LeadTesting2(t)
+	sm3.LeadTesting3(t)
 }
 
 //Testing various scenarios against Follower state.
@@ -454,8 +456,48 @@ func (sm *State_Machine) LeadTesting2(t *testing.T) {
 	sm.eventProcess()
 	follTC.resp = <-actionCh
 	follTC.expect()
+}
 
-	fmt.Println(sm)
+func (sm *State_Machine) LeadTesting3(t *testing.T) {
+	var follTC TestCases
+	follTC.t = t
+
+	/*Sending new Commit entry*/
+	//Setting state machine such that majority of follower had send positive append entry response.
+	//<<<|id:1000|status:leader|currTerm:6|logInd:8|votedFor:0|commitInd:1|>>>
+	entry := Log{log: []MyLog{{1, "read test"}, {1, "read cloud"}, {1, "read cs733"}, {2, "delete test"}, {4, "cas test"}, {4, "rename cloud"}, {6, "rename test"}, {6, "cas cs733"}}}
+	sm.log = entry
+	sm.logInd = 8
+	sm.commitIndex = 1
+	sm.currTerm = 6
+	match := [5]int32{6, 6, 4, 6, 3}
+	sm.matchIndex = match
+	//Sending timeout
+	//-->Expected to send heartbeat msg to all server with new commit index.
+	follTC.req = Timeout{}
+	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 7, preLogTerm: 6, leaderCom: 6}}
+	timeoutCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	//<<<|id:1000|status:leader|currTerm:6|logInd:8|votedFor:0|commitInd:6|>>>
+
+	//Setting state machine such that majority of follower had not send positive append entry response.
+	//<<<|id:1000|status:leader|currTerm:6|logInd:8|votedFor:0|commitInd:1|>>>
+	match = [5]int32{6, 2, 4, 6, 3}
+	sm.commitIndex = 1
+	sm.matchIndex = match
+	//Sending timeout
+	//-->Expected to send heartbeat msg to all server with old commit index.
+	follTC.req = Timeout{}
+	follTC.respExp = Send{peerId: 0, event: AppEntrReq{term: 6, leaderId: 1000, preLogInd: 7, preLogTerm: 6, leaderCom: 1}}
+	timeoutCh <- follTC.req
+	sm.eventProcess()
+	follTC.resp = <-actionCh
+	follTC.expect()
+
+	//<<<|id:1000|status:leader|currTerm:6|logInd:8|votedFor:0|commitInd:1|>>>
 }
 
 func enterLog(mylog MyLog) Log {

@@ -13,7 +13,6 @@ type Persi_State struct {
 	currTerm  int32
 	votedFor  int32
 	voteGrant [2]int32
-	log       Log
 	logInd    int32
 	status    string
 }
@@ -30,6 +29,7 @@ type Volat_LState struct {
 	matchIndex [5]int32
 }
 
+//Stores log entries
 type MyLog struct {
 	term int32
 	log  string
@@ -39,14 +39,15 @@ type Log struct {
 	log []MyLog
 }
 
+//Stores peers
 var peer map[int32]int32
 
 //Contains all the state with respect to given machine.
-
 type State_Machine struct {
 	Persi_State
 	Volat_State
 	Volat_LState
+	log Log
 }
 
 //AppendEntriesRequest: Invoked by leader to replicate log entries and also used as heartbeat.
@@ -107,14 +108,18 @@ type Alarm struct {
 	t int
 }
 
-//This is an indication to the node to store the data at the given index.
+//This is an indication to the node to store the log at the given index.
 type LogStore struct {
 	index int32
 	data  []byte
 }
 
-//Returns respond to given request.
+//This is an indication to the node to store the state in the memory.
+type StateStore struct {
+	data []byte
+}
 
+//Returns respond to given request.
 func (appReq AppEntrReq) alarm(sm *State_Machine)    {}
 func (appResp AppEntrResp) alarm(sm *State_Machine)  {}
 func (votReq VoteReq) alarm(sm *State_Machine)       {}
