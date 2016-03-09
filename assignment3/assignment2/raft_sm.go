@@ -1,6 +1,9 @@
-package main
+package assignment2
 
-import "reflect"
+import (
+	"fmt"
+	"reflect"
+)
 import "math"
 
 //This deals with the incomming rquest and invokes repective response event.
@@ -10,13 +13,19 @@ type Message interface {
 	alarm(sm *State_Machine)
 }
 
+func InitSM() (state State_Machine) {
+	var sm1 State_Machine
+	return sm1
+}
+
 //Function for state to become follower.
-func (sm *State_Machine) follSys() {
+func (sm *State_Machine) FollSys() {
 	sm.status = FOLL //Change state status to Follower
 	sm.votedFor = 0  //Reinitialize VoteFor
 	//Set timeout
 	resp := Alarm{t: 200}
 	actionCh <- resp
+	sm.eventProcess()
 }
 
 //Function for state to become candidate.
@@ -57,47 +66,50 @@ func (sm *State_Machine) leadSys() {
 //This will keep listening to all incomming channels and procceed the request as it arrives.
 func (sm *State_Machine) eventProcess() {
 	var msg Message
-	select {
-	//Requests from client machine.
-	case appendMsg := <-clientCh:
-		msg = appendMsg.(Append)
-		msg.commit(sm)
+	for {
+		fmt.Println("In eventProcess")
+		select {
+		//Requests from client machine.
+		case appendMsg := <-clientCh:
+			msg = appendMsg.(Append)
+			msg.commit(sm)
 
-	//Request from peers in the cluster.
-	case peerMsg := <-netCh:
-		//Generate corrosponding response to the request.
-		switch peerMsg.(type) {
-		case AppEntrReq:
-			msg = peerMsg.(AppEntrReq)
-			msg.send(sm)
-		case AppEntrResp:
-			msg = peerMsg.(AppEntrResp)
-			msg.send(sm)
-		case VoteReq:
-			msg = peerMsg.(VoteReq)
-			msg.send(sm)
-		case VoteResp:
-			msg = peerMsg.(VoteResp)
-			msg.send(sm)
-		}
+		//Request from peers in the cluster.
+		case peerMsg := <-netCh:
+			//Generate corrosponding response to the request.
+			switch peerMsg.(type) {
+			case AppEntrReq:
+				msg = peerMsg.(AppEntrReq)
+				msg.send(sm)
+			case AppEntrResp:
+				msg = peerMsg.(AppEntrResp)
+				msg.send(sm)
+			case VoteReq:
+				msg = peerMsg.(VoteReq)
+				msg.send(sm)
+			case VoteResp:
+				msg = peerMsg.(VoteResp)
+				msg.send(sm)
+			}
 
-	//Timeout event.
-	case <-timeoutCh:
-		//Generate corrosponding response to the request.
-		switch sm.status {
-		case FOLL:
-			//Change state to candidate.
-			sm.candSys()
+		//Timeout event.
+		case <-timeoutCh:
+			//Generate corrosponding response to the request.
+			switch sm.status {
+			case FOLL:
+				//Change state to candidate.
+				sm.candSys()
 
-		case CAND:
-			//Start election for next term again.
-			sm.candSys()
+			case CAND:
+				//Start election for next term again.
+				sm.candSys()
 
-		case LEAD:
-			//Commit the log and send heartbeat msg to all other servers.
-			sm.commitLog()
-			resp := Send{peerId: 0, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term, leaderCom: sm.commitIndex}}
-			actionCh <- resp
+			case LEAD:
+				//Commit the log and send heartbeat msg to all other servers.
+				sm.commitLog()
+				resp := Send{peerId: 0, event: AppEntrReq{term: sm.currTerm, leaderId: sm.id, preLogInd: sm.logInd - 1, preLogTerm: sm.log.log[sm.logInd-1].term, leaderCom: sm.commitIndex}}
+				actionCh <- resp
+			}
 		}
 	}
 }
@@ -179,7 +191,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 			resp := Send{peerId: appReq.leaderId, event: AppEntrResp{term: sm.currTerm, succ: false}}
 			actionCh <- resp
 			sm.currTerm = appReq.term
-			sm.follSys()
+			sm.FollSys()
 			return
 		}
 		//Reply negative if incomming term is lower.
@@ -244,7 +256,7 @@ func (votReq VoteReq) send(sm *State_Machine) {
 			resp := Send{peerId: votReq.candId, event: VoteResp{term: sm.currTerm, voteGrant: false}}
 			actionCh <- resp
 			sm.currTerm = votReq.term
-			sm.follSys()
+			sm.FollSys()
 		}
 	}
 }
@@ -261,7 +273,7 @@ func (votRes VoteResp) send(sm *State_Machine) {
 		if votRes.voteGrant == false {
 			sm.voteGrant[1] += 1
 			if votRes.term > sm.currTerm {
-				sm.follSys()
+				sm.FollSys()
 				return
 			}
 		}
@@ -272,7 +284,7 @@ func (votRes VoteResp) send(sm *State_Machine) {
 		}
 		//Step down to Follower if negative responses are atleat 3.
 		if sm.voteGrant[1] >= 3 {
-			sm.follSys()
+			sm.FollSys()
 			return
 		}
 		//Do reelection due to cluster partioning.
@@ -361,18 +373,18 @@ func (sm *State_Machine) initialize() {
 }
 
 //Channel declaration for listening to incomming requests.
-var clientCh = make(chan interface{}, 5)
-var netCh = make(chan interface{}, 5)
-var timeoutCh = make(chan interface{}, 5)
+var clientCh = make(chan interface{})
+var netCh = make(chan interface{})
+var timeoutCh = make(chan interface{})
 
 //Channel for providing respond to given request.
-var actionCh = make(chan interface{}, 5)
+var actionCh = make(chan interface{})
 
 /*
 //Main function: Starts machine in follower state and assign a unique Id to machine.
 func main() {
 	//Start the server in Follower state
 	sm := State_Machine{Persi_State: Persi_State{id: 1000, currTerm: 0, status: FOLL}, Volat_State: Volat_State{commitIndex: 0, lastApplied: 0}}
-	sm.follSys()
+	sm.FollSys()
 }
 */
