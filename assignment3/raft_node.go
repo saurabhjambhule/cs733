@@ -29,7 +29,6 @@ func processEvents(server cluster.Server) {
 			case Alarm:
 				al := incm.(Alarm)
 				toFlag = true
-				fmt.Println("<-Recieved", al)
 				toDur = al.T
 
 			case Commit:
@@ -100,7 +99,6 @@ func processTO() {
 	for {
 		//Send timeout to State after dur milliseconds.
 		if toFlag == true {
-			//dur := time.Duration(<-processTOCh)
 			fmt.Println("Alarm Called", toDur)
 			time.Sleep(time.Second * time.Duration(toDur))
 			fmt.Println("Timeout Called")
@@ -137,5 +135,6 @@ func main() {
 	//Start StateMachine to process incomming packets in background.
 	go sm.FollSys()
 
+	//Raft node Processing.
 	processEvents(server)
 }
