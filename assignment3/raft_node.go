@@ -33,6 +33,10 @@ func processEvents(server cluster.Server) {
 
 			case Commit:
 
+			case LoggStore:
+
+			case StateStore:
+
 			}
 		}
 	}
