@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"reflect"
 )
 
@@ -25,7 +26,7 @@ func (sm *State_Machine) FollSys() {
 	sm.votedFor = 0  //Reinitialize VoteFor
 	//Set timeout
 	fmt.Println(">>>", sm)
-	resp := Alarm{T: 10} //200
+	resp := Alarm{T: random()} //200
 	actionCh <- resp
 	sm.EventProcess()
 }
@@ -35,11 +36,11 @@ func (sm *State_Machine) candSys() {
 	sm.status = CAND    //Change state status to CandIdate
 	sm.currTerm += 1    //Increament the Term
 	sm.votedFor = sm.id //Vote for self
-	sm.VoteGrant[0] = 0 //This is positive VoteGrant counter initialized to 0
+	sm.VoteGrant[0] = 2 //This is positive VoteGrant counter initialized to 0
 	sm.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
 	fmt.Println(">>>", sm)
 	//Set election timeout
-	resp := Alarm{T: 20} //150
+	resp := Alarm{T: random()} //150
 	actionCh <- resp
 	//Sending vote request null information of previous entry as CandIdate had just joined the cluster.
 	if len(sm.Logg.Logg) == 0 {
@@ -58,13 +59,18 @@ func (sm *State_Machine) leadSys() {
 	sm.votedFor = 0  //Reinitialize VoteFor
 	sm.initialize()  //initialize matchIndex and nestIndex
 	fmt.Println(">>>", sm)
-	resp := Alarm{T: 35} //175
+	resp := Alarm{T: 75} //175
 	//Set heartbeat timeout
 	actionCh <- resp
 	//Send heartbeat msg to all other servers
 	//PeerId:0 means to all servers.
-	respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, leaderId: sm.id, PreLoggInd: sm.LoggInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, leaderCom: sm.commitIndex}}
-	actionCh <- respp
+	if len(sm.Logg.Logg) == 0 {
+		respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, leaderId: sm.id, PreLoggInd: 0, PreLoggTerm: 0, leaderCom: 0}}
+		actionCh <- respp
+	} else {
+		respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, leaderId: sm.id, PreLoggInd: sm.LoggInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, leaderCom: sm.commitIndex}}
+		actionCh <- respp
+	}
 }
 
 //This will keep listening to all incomming channels and procceed the request as it arrives.
@@ -78,7 +84,7 @@ func (sm *State_Machine) EventProcess() {
 			msg = appendMsg.(Append)
 			msg.commit(sm)
 
-		//Request from Peers in the cluster.
+		//Request from PEERS in the cluster.
 		case PeerMsg := <-netCh:
 			//Generate corrosponding response to the request.
 			switch PeerMsg.(type) {
@@ -92,6 +98,7 @@ func (sm *State_Machine) EventProcess() {
 				msg = PeerMsg.(VoteReq)
 				msg.send(sm)
 			case VoteResp:
+				//fmt.Println("<<<IN<<<")
 				msg = PeerMsg.(VoteResp)
 				msg.send(sm)
 			}
@@ -111,8 +118,13 @@ func (sm *State_Machine) EventProcess() {
 			case LEAD:
 				//Commit the Logg and send heartbeat msg to all other servers.
 				sm.commitLogg()
-				resp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, leaderId: sm.id, PreLoggInd: sm.LoggInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, leaderCom: sm.commitIndex}}
-				actionCh <- resp
+				if len(sm.Logg.Logg) == 0 {
+					respp := Send{PeerId: 0, Event: VoteReq{Term: sm.currTerm, CandId: sm.id, PreLoggInd: 0, PreLoggTerm: 0}}
+					actionCh <- respp
+				} else {
+					resp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, leaderId: sm.id, PreLoggInd: sm.LoggInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, leaderCom: sm.commitIndex}}
+					actionCh <- resp
+				}
 			}
 		}
 	}
@@ -124,19 +136,23 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 	switch sm.status {
 	//For every incoming signal from leader to follower reset the timeout time as leader is still alive.
 	case FOLL:
+		flag := false
 		//if follower dont have any entries in Logg meaning he just joined the cluster, then coppy incoming Logg to local Logg.
 		if len(sm.Logg.Logg) == 0 {
 			for i := 0; i < len(appReq.Logg.Logg); i++ {
 				sm.Logg.Logg = append(sm.Logg.Logg, appReq.Logg.Logg[i])
 				sm.LoggInd++
+				flag = true
 			}
 			//if incomming Term is higher than local, update the Term.
 			sm.currTerm = appReq.Term
 			//Send possitive reply, as Logg has been copied to local Logg.
-			resp := Send{PeerId: appReq.leaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
-			actionCh <- resp
+			if flag == true {
+				resp := Send{PeerId: appReq.leaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
+				actionCh <- resp
+			}
 			//Reset the timeout timer.
-			respp := Alarm{T: 200}
+			respp := Alarm{T: random()}
 			actionCh <- respp
 			return
 		}
@@ -144,14 +160,14 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		if (sm.currTerm > appReq.Term) || (appReq.PreLoggInd > sm.LoggInd-1) {
 			resp := Send{PeerId: appReq.leaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
 			actionCh <- resp
-			respp := Alarm{T: 200}
+			respp := Alarm{T: random()}
 			actionCh <- respp
 			return
 		}
 		//If Logg is NULL i.e. Heartbeat msg, reset the timeout.
 		if len(appReq.Logg.Logg) == 0 {
 			//Reset the timeout timer.
-			resp := Alarm{T: 200}
+			resp := Alarm{T: random()}
 			actionCh <- resp
 			return
 		}
@@ -159,7 +175,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		if (appReq.PreLoggInd != sm.LoggInd-1) && (appReq.PreLoggTerm == sm.currTerm) || (!reflect.DeepEqual(sm.Logg.Logg[appReq.PreLoggInd], appReq.Logg.Logg[0])) {
 			resp := Send{PeerId: appReq.leaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
 			actionCh <- resp
-			respp := Alarm{T: 200}
+			respp := Alarm{T: random()}
 			actionCh <- respp
 			return
 		}
@@ -173,7 +189,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		resp := Send{PeerId: appReq.leaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
 		actionCh <- resp
 		//Reset the timeout timer.
-		respp := Alarm{T: 200}
+		respp := Alarm{T: random()}
 		actionCh <- respp
 
 	case CAND:
@@ -247,10 +263,11 @@ func (votReq VoteReq) send(sm *State_Machine) {
 	case CAND:
 		//Reject the incomming vote Request.
 		resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
+		//fmt.Println("OUT>>>")
 		actionCh <- resp
 
-	//Reply negative  in any case for vote request.
 	case LEAD:
+		//Reply negative  in any case for vote request.
 		if sm.currTerm > votReq.Term {
 			resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
 			actionCh <- resp
@@ -269,6 +286,7 @@ func (votReq VoteReq) send(sm *State_Machine) {
 func (votRes VoteResp) send(sm *State_Machine) {
 	switch sm.status {
 	case CAND:
+		//fmt.Println("***>>", sm.VoteGrant[0], "-", sm.VoteGrant[1])
 		//Count incomming positive responses.
 		if votRes.VoteGrant == true {
 			sm.VoteGrant[0] += 1
@@ -282,12 +300,12 @@ func (votRes VoteResp) send(sm *State_Machine) {
 			}
 		}
 		//Become Leader if positive responses are atleat 3.
-		if sm.VoteGrant[0] >= 3 {
+		if sm.VoteGrant[0] >= MAX {
 			sm.leadSys()
 			return
 		}
 		//Step down to Follower if negative responses are atleat 3.
-		if sm.VoteGrant[1] >= 3 {
+		if sm.VoteGrant[1] >= MAX {
 			sm.FollSys()
 			return
 		}
@@ -296,6 +314,8 @@ func (votRes VoteResp) send(sm *State_Machine) {
 			sm.candSys()
 			return
 		}
+		//fmt.Println("***>>", sm.VoteGrant[0], "-", sm.VoteGrant[1])
+
 	}
 }
 
@@ -335,28 +355,25 @@ func (sm *State_Machine) commitLogg() {
 			continue
 		}
 		count := 0
-		for j := 0; j < 5; j++ {
+		for j := 0; j < PEERS; j++ {
 			if sm.matchIndex[j] >= i {
 				count += 1
 			}
 		}
-		if count >= 3 {
+		if count >= MAX {
 			sm.commitIndex = i
 			break
 		}
 	}
 }
 
-/*
 //Random function to select random time for election timeout.
 //Not covered in test cases as output will be non deTerministic.
 func random() int {
 	min := 150
 	max := 300
-	rand.Seed(time.Now().Unix())
-	return rand.Intn(max-min) + min
+	return min + rand.Intn(max-min)
 }
-*/
 
 //Used to copy Logg from given request to state machine.
 func copyLogg(Term int32, myInd int32, preInd int32, oldLogg Logg, newLogg Logg) (int32, Logg) {
@@ -370,7 +387,7 @@ func copyLogg(Term int32, myInd int32, preInd int32, oldLogg Logg, newLogg Logg)
 
 //Initializing the matchIndex and nextIndex.
 func (sm *State_Machine) initialize() {
-	for i := 0; i < 5; i++ {
+	for i := 0; i < PEERS; i++ {
 		sm.matchIndex[i] = 0
 		sm.nextIndex[i] = sm.LoggInd
 	}

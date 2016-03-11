@@ -4,7 +4,8 @@ const (
 	FOLL  = "follower"
 	CAND  = "CandIdate"
 	LEAD  = "leader"
-	PeerS = 5
+	PEERS = 5
+	MAX   = 3
 )
 
 //Contains persistent state of all servers.
@@ -25,8 +26,8 @@ type Volat_State struct {
 
 //Contains volatile state of the leader.
 type Volat_LState struct {
-	nextIndex  [5]int32
-	matchIndex [5]int32
+	nextIndex  [PEERS]int32
+	matchIndex [PEERS]int32
 }
 
 //Stores Logg entries
@@ -39,7 +40,7 @@ type Logg struct {
 	Logg []MyLogg
 }
 
-//Stores Peers
+//Stores PEERS
 var Peer map[int32]int32
 
 //Contains all the state with respect to given machine.
