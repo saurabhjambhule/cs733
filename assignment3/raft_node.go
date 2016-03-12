@@ -12,20 +12,16 @@ import (
 	"time"
 
 	"github.com/cs733-iitb/cluster"
+	//"github.com/cs733-iitb/log"
 )
-
-type MyStructure struct {
-	AppReq  AppEntrReq
-	AppResp AppEntrResp
-	VotReq  VoteReq
-	VotResp VoteResp
-}
 
 type Config struct {
 	Id               int    // this node's id. One of the cluster's entries should match.
 	LogDir           string // Log file directory for this node
 	ElectionTimeout  int
 	HeartbeatTimeout int
+	DoTO             time.Time
+	toFlag           bool
 }
 
 type MyConfig struct {
@@ -38,6 +34,11 @@ type incomming interface {
 //Process incoming events from StateMachine.
 func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 	var incm incomming
+	/*lg, err := log.Open(myConf.LogDir)
+	lg.RegisterSampleEntry(MyLogg{})
+	assert(err == nil)
+	defer lg.Close()*/
+
 	for {
 		//fmt.Println("In eventProcess Node")
 		select {
@@ -45,21 +46,27 @@ func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 			switch incm.(type) {
 			case Send:
 				msg := incm.(Send)
-				fmt.Println("<-Recieved", msg, " Count - ", sm.VoteGrant[1], " Term -", sm.currTerm)
+				//fmt.Println("<-Sending: ", msg)
 				processOutbox(server, msg)
 
 			case Alarm:
+				//fmt.Println("Timeout Init")
 				al := incm.(Alarm)
-				toFlag = true
-				if al.T == myConf.HeartbeatTimeout {
-					toDur = myConf.HeartbeatTimeout * 100
+				now := time.Now()
+				if al.T == LTO {
+					myConf.DoTO = now.Add(time.Duration(myConf.HeartbeatTimeout) * time.Millisecond)
+					myConf.toFlag = true
 				} else {
-					toDur = myConf.ElectionTimeout * 100
+					myConf.ElectionTimeout = random()
+					myConf.DoTO = now.Add(time.Duration(myConf.ElectionTimeout) * time.Millisecond)
+					myConf.toFlag = true
 				}
 
 			case Commit:
 
 			case LoggStore:
+				//msg := incm.(LoggStore)
+				//storeDate(msg.Index, msg.Data)
 
 			case StateStore:
 
@@ -73,64 +80,76 @@ func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 func processInbox(server cluster.Server) {
 	for {
 		env := <-server.Inbox()
-		fmt.Printf("[From: %d MsgId:%d]\n", env.Pid, env.MsgId)
-		msg := env.Msg.(MyStructure)
-		switch env.MsgId {
-		case 1:
-			netCh <- msg.VotReq
-		case 2:
-			//fmt.Println("IN<<<<<")
-			netCh <- msg.VotResp
-		case 11:
-			netCh <- msg.AppReq
-		case 22:
-			netCh <- msg.AppResp
+		//fmt.Printf("[From: %d MsgId:%d] ", env.Pid, env.MsgId)
+		//fmt.Println(env.Msg)
+		//msg := env.Msg.(MyStructure)
+		switch env.Msg.(type) {
+		case VoteReq:
+			netCh <- env.Msg
+		case VoteResp:
+			netCh <- env.Msg
+		case AppEntrReq:
+			netCh <- env.Msg
+		case AppEntrResp:
+			netCh <- env.Msg
 		}
 	}
 }
 
 //Process to send packets to other Servers.
 func processOutbox(server cluster.Server, msg Send) {
-	fmt.Printf("******IN<<< %T\n", msg.Event)
 	//fmt.Println("*IN*", msg.PeerId)
-	var tmp MyStructure
+	//var tmp MyStructure
 	if msg.PeerId == 0 {
 		switch msg.Event.(type) {
 		case AppEntrReq:
-			tmp.AppReq = msg.Event.(AppEntrReq)
-			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, MsgId: 11, Msg: tmp}
+			AppReq := msg.Event.(AppEntrReq)
+			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, MsgId: 11, Msg: AppReq}
 		case VoteReq:
-			tmp.VotReq = msg.Event.(VoteReq)
-			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, MsgId: 1, Msg: tmp}
+			VotReq := msg.Event.(VoteReq)
+			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, MsgId: 1, Msg: VotReq}
 		}
 	} else {
 		switch msg.Event.(type) {
 		case AppEntrReq:
-			tmp.AppReq = msg.Event.(AppEntrReq)
-			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 11, Msg: tmp}
+			AppReq := msg.Event.(AppEntrReq)
+			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 11, Msg: AppReq}
 		case AppEntrResp:
-			tmp.AppResp = msg.Event.(AppEntrResp)
-			tmp.AppResp.Peer = int32(myId)
-			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 22, Msg: tmp}
+			AppResp := msg.Event.(AppEntrResp)
+			AppResp.Peer = int32(myId)
+			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 22, Msg: AppResp}
 		case VoteResp:
-			tmp.VotResp = msg.Event.(VoteResp)
-			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 2, Msg: tmp}
+			VotResp := msg.Event.(VoteResp)
+			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 2, Msg: VotResp}
 		}
 	}
 }
 
 //Trigger Timeouts for State.
-func processTO() {
+func processTO(myConf *Config) {
 	for {
 		//Send timeout to State after dur milliseconds.
-		if toFlag == true {
-			fmt.Println("Alarm Called", toDur)
-			time.Sleep(time.Millisecond * time.Duration(toDur))
-			fmt.Println("Timeout Called")
+		if myConf.toFlag && myConf.DoTO.Before(time.Now()) {
+			myConf.toFlag = false
+			//fmt.Println("Timeout Called")
 			timeoutCh <- nil
-			toFlag = false
 		}
 	}
+}
+
+/*func storeDate(ind int, data Logg) {
+	for i := ind; i < len(data); i++ {
+		err = lg.Append(string(data[i]))
+		assert(err == nil)
+	}
+}*/
+
+//Random function to select random time for election timeout.
+//Not covered in test cases as output will be non deTerministic.
+func random() int {
+	min := 1500
+	max := 3000
+	return min + rand.Intn(max-min)
 }
 
 //Configuration of Log and Node.
@@ -161,25 +180,25 @@ func (conf MyConfig) logConfig(myid int) Config {
 
 //Channel for passing timeout duration to the processTO background process.
 var processTOCh = make(chan int)
-var toDur int
-var toFlag bool
 var myId int
 
 func main() {
 	//Register a struct name by giving it a dummy object of that name.
-	gob.Register(MyStructure{})
+	//gob.Register(MyStructure{})
 	gob.Register(AppEntrReq{})
 	gob.Register(AppEntrResp{})
 	gob.Register(VoteReq{})
 	gob.Register(VoteResp{})
+	gob.Register(StateStore{})
+	gob.Register(LoggStore{})
 
-	rand.Seed(time.Now().UTC().UnixNano())
 	var sm State_Machine
 	var conf MyConfig
 	flag.Parse()
 	//Get Server id from command line.
 	myId, _ = strconv.Atoi(flag.Args()[0])
 	sm.id = int32(myId)
+	rand.Seed(time.Now().UTC().UnixNano() * int64(myId))
 
 	//Set up details about cluster nodes form json file.
 	server, err := cluster.New(myId, "cluster_config.json")
@@ -187,14 +206,17 @@ func main() {
 		panic(err)
 	}
 
-	//Get Log configuration.
+	//Initialize the Log and Node configuration.
 	myConf := conf.logConfig(myId)
+	myConf.toFlag = false
+	now := time.Now()
+	myConf.DoTO = now.Add(time.Duration(10) * time.Minute)
 
 	//Start backaground process to listen incomming packets from other servers.
 	go processInbox(server)
 
 	//Start background process to trigger timeout events.
-	go processTO()
+	go processTO(&myConf)
 
 	//Start StateMachine to process incomming packets in background.
 	go sm.FollSys()

@@ -6,6 +6,8 @@ const (
 	LEAD  = "leader"
 	PEERS = 5
 	MAX   = 3
+	FCTO  = 0
+	LTO   = 1
 )
 
 //Contains persistent state of all servers.
@@ -20,14 +22,14 @@ type Persi_State struct {
 
 //Contains volatile state of servers.
 type Volat_State struct {
-	commitIndex int32
-	lastApplied int32
+	CommitIndex int32
+	LastApplied int32
 }
 
 //Contains volatile state of the leader.
 type Volat_LState struct {
-	nextIndex  [PEERS]int32
-	matchIndex [PEERS]int32
+	NextIndex  [PEERS]int32
+	MatchIndex [PEERS]int32
 }
 
 //Stores Logg entries
@@ -54,10 +56,10 @@ type State_Machine struct {
 //AppendEntriesRequest: Invoked by leader to replicate Logg entries and also used as heartbeat.
 type AppEntrReq struct {
 	Term        int32
-	leaderId    int32
+	LeaderId    int32
 	PreLoggInd  int32
 	PreLoggTerm int32
-	leaderCom   int32
+	LeaderCom   int32
 	Logg        Logg
 }
 
