@@ -1,8 +1,8 @@
 {"Details":[
-	{"Id": 1, "LogDir": "Log_1", "ElectionTimeout": 150, "HeartbeatTimeout": 50},
-	{"Id": 2, "LogDir": "Log_2", "ElectionTimeout": 180, "HeartbeatTimeout": 50},
-	{"Id": 3, "LogDir": "Log_3", "ElectionTimeout": 210, "HeartbeatTimeout": 50},
-	{"Id": 4, "LogDir": "Log_4", "ElectionTimeout": 240, "HeartbeatTimeout": 50},
-	{"Id": 5, "LogDir": "Log_5", "ElectionTimeout": 270, "HeartbeatTimeout": 50}
+	{"Id": 1, "LogDir": "Log_1", "ElectionTimeout": 300, "HeartbeatTimeout": 75},
+	{"Id": 2, "LogDir": "Log_2", "ElectionTimeout": 180, "HeartbeatTimeout": 75},
+	{"Id": 3, "LogDir": "Log_3", "ElectionTimeout": 210, "HeartbeatTimeout": 75},
+	{"Id": 4, "LogDir": "Log_4", "ElectionTimeout": 240, "HeartbeatTimeout": 75},
+	{"Id": 5, "LogDir": "Log_5", "ElectionTimeout": 270, "HeartbeatTimeout": 75}
 	]
 }

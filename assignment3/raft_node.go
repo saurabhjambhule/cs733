@@ -21,7 +21,7 @@ type Config struct {
 	ElectionTimeout  int
 	HeartbeatTimeout int
 	DoTO             time.Time
-	toFlag           bool
+	ToFlag           bool
 }
 
 type MyConfig struct {
@@ -52,14 +52,23 @@ func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 			case Alarm:
 				//fmt.Println("Timeout Init")
 				al := incm.(Alarm)
-				now := time.Now()
 				if al.T == LTO {
+					now := time.Now()
 					myConf.DoTO = now.Add(time.Duration(myConf.HeartbeatTimeout) * time.Millisecond)
-					myConf.toFlag = true
-				} else {
-					myConf.ElectionTimeout = random()
+					myConf.ToFlag = true
+				}
+				if al.T == CTO {
+					myConf.ElectionTimeout = (500 + rand.Intn(500))
+					now := time.Now()
 					myConf.DoTO = now.Add(time.Duration(myConf.ElectionTimeout) * time.Millisecond)
-					myConf.toFlag = true
+					myConf.ToFlag = true
+				}
+				if al.T == FTO {
+					myConf.ToFlag = true
+					myConf.ElectionTimeout = (500 + rand.Intn(500))
+					now := time.Now()
+					myConf.DoTO = now.Add(time.Duration(myConf.ElectionTimeout) * time.Millisecond)
+					myConf.ToFlag = true
 				}
 
 			case Commit:
@@ -77,7 +86,7 @@ func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 }
 
 //Process to listen incomming packets from other Servers.
-func processInbox(server cluster.Server) {
+func processInbox(server cluster.Server, myConf *Config) {
 	for {
 		env := <-server.Inbox()
 		//fmt.Printf("[From: %d MsgId:%d] ", env.Pid, env.MsgId)
@@ -126,13 +135,20 @@ func processOutbox(server cluster.Server, msg Send) {
 }
 
 //Trigger Timeouts for State.
-func processTO(myConf *Config) {
+func processTO(myConf *Config, sm *State_Machine) {
 	for {
 		//Send timeout to State after dur milliseconds.
-		if myConf.toFlag && myConf.DoTO.Before(time.Now()) {
-			myConf.toFlag = false
-			//fmt.Println("Timeout Called")
-			timeoutCh <- nil
+		if myConf.ToFlag {
+			for {
+				if myConf.DoTO.Before(time.Now()) {
+					myConf.ToFlag = false
+					//fmt.Println("Timeout Called")
+					//fmt.Println("##***>>", sm.currTerm)
+					//fmt.Println("~~~>>", sm.currTerm, " : ", time.Now(), " = ", myConf.ElectionTimeout)
+					timeoutCh <- nil
+					break
+				}
+			}
 		}
 	}
 }
@@ -146,10 +162,8 @@ func processTO(myConf *Config) {
 
 //Random function to select random time for election timeout.
 //Not covered in test cases as output will be non deTerministic.
-func random() int {
-	min := 1500
-	max := 3000
-	return min + rand.Intn(max-min)
+func randomGen() int {
+	return 150 + rand.Intn(150)
 }
 
 //Configuration of Log and Node.
@@ -208,15 +222,15 @@ func main() {
 
 	//Initialize the Log and Node configuration.
 	myConf := conf.logConfig(myId)
-	myConf.toFlag = false
+	myConf.ToFlag = false
 	now := time.Now()
 	myConf.DoTO = now.Add(time.Duration(10) * time.Minute)
 
 	//Start backaground process to listen incomming packets from other servers.
-	go processInbox(server)
+	go processInbox(server, &myConf)
 
 	//Start background process to trigger timeout events.
-	go processTO(&myConf)
+	go processTO(&myConf, &sm)
 
 	//Start StateMachine to process incomming packets in background.
 	go sm.FollSys()

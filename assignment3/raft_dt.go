@@ -6,8 +6,9 @@ const (
 	LEAD  = "leader"
 	PEERS = 5
 	MAX   = 3
-	FCTO  = 0
-	LTO   = 1
+	FTO   = 0
+	CTO   = 1
+	LTO   = 2
 )
 
 //Contains persistent state of all servers.

@@ -27,7 +27,7 @@ func (sm *State_Machine) FollSys() {
 	sm.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
 	//Set timeout
 	fmt.Println(">>>", sm)
-	resp := Alarm{T: FCTO} //200
+	resp := Alarm{T: FTO} //200
 	actionCh <- resp
 	sm.EventProcess()
 }
@@ -41,7 +41,7 @@ func (sm *State_Machine) candSys() {
 	sm.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
 	fmt.Println(">>>", sm)
 	//Set election timeout
-	resp := Alarm{T: FCTO} //150
+	resp := Alarm{T: CTO} //150
 	actionCh <- resp
 	//Sending vote request null information of previous entry as CandIdate had just joined the cluster.
 	if len(sm.Logg.Logg) == 0 {
@@ -60,7 +60,7 @@ func (sm *State_Machine) leadSys() {
 	sm.votedFor = 0     //Reinitialize VoteFor
 	sm.VoteGrant[0] = 0 //This is positive VoteGrant counter initialized to 1 i.e. self vote
 	sm.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
-	sm.initialize()     //initialize MatchIndex and nestIndex
+	sm.initialize()     //initialize MatchIndex and nextIndex
 	fmt.Println(">>>", sm)
 	resp := Alarm{T: LTO} //175
 	//Set heartbeat timeout
@@ -79,38 +79,57 @@ func (sm *State_Machine) leadSys() {
 //This will keep listening to all incomming channels and procceed the request as it arrives.
 func (sm *State_Machine) EventProcess() {
 	var msg Message
+
+	go func(sm *State_Machine) {
+		//fmt.Println(msg)
+		for {
+			select {
+			//Timeout Event.
+			case <-timeoutCh:
+				//Generate corrosponding response to the request.
+				switch sm.status {
+				case FOLL:
+					//fmt.Println("***>>", sm.currTerm)
+					//Change state to CandIdate.
+					//fmt.Println("--->>", sm.currTerm, " : ", time.Now())
+					sm.candSys()
+
+				case CAND:
+					//Start election for next Term again.
+					sm.candSys()
+
+				case LEAD:
+					//fmt.Println("Heartbeat-", len(sm.Logg.Logg))
+					//Commit the Logg and send heartbeat msg to all other servers.
+					sm.commitLogg()
+					if len(sm.Logg.Logg) == 0 {
+						respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, LeaderId: sm.id, PreLoggInd: 0, PreLoggTerm: 0, LeaderCom: 0}}
+						//fmt.Println("--->>", sm.currTerm, " : ", time.Now())
+						actionCh <- respp
+						resp := Alarm{T: LTO} //175
+						//Set heartbeat timeout
+						actionCh <- resp
+					} else {
+						respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, LeaderId: sm.id, PreLoggInd: sm.LoggInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, LeaderCom: sm.CommitIndex}}
+						actionCh <- respp
+						resp := Alarm{T: LTO} //175
+						//Set heartbeat timeout
+						actionCh <- resp
+					}
+				}
+			}
+		}
+	}(sm)
+
 	for {
 		//fmt.Println("In EventProcess")
 		select {
-		//Requests from client machine.
-		case appendMsg := <-clientCh:
-			msg = appendMsg.(Append)
-			msg.commit(sm)
-
-		//Request from PEERS in the cluster.
-		case PeerMsg := <-netCh:
-			//Generate corrosponding response to the request.
-			switch PeerMsg.(type) {
-			case AppEntrReq:
-				msg = PeerMsg.(AppEntrReq)
-				msg.send(sm)
-			case AppEntrResp:
-				msg = PeerMsg.(AppEntrResp)
-				msg.send(sm)
-			case VoteReq:
-				msg = PeerMsg.(VoteReq)
-				msg.send(sm)
-			case VoteResp:
-				//fmt.Println("<<<IN<<<")
-				msg = PeerMsg.(VoteResp)
-				msg.send(sm)
-			}
-
 		//Timeout Event.
 		case <-timeoutCh:
 			//Generate corrosponding response to the request.
 			switch sm.status {
 			case FOLL:
+				//fmt.Println("***>>", sm.currTerm)
 				//Change state to CandIdate.
 				sm.candSys()
 
@@ -136,6 +155,31 @@ func (sm *State_Machine) EventProcess() {
 					actionCh <- resp
 				}
 			}
+
+		//Requests from client machine.
+		case appendMsg := <-clientCh:
+			msg = appendMsg.(Append)
+			msg.commit(sm)
+
+		//Request from PEERS in the cluster.
+		case PeerMsg := <-netCh:
+			//Generate corrosponding response to the request.
+			switch PeerMsg.(type) {
+			case AppEntrReq:
+				msg = PeerMsg.(AppEntrReq)
+				msg.send(sm)
+			case AppEntrResp:
+				msg = PeerMsg.(AppEntrResp)
+				msg.send(sm)
+			case VoteReq:
+				msg = PeerMsg.(VoteReq)
+				msg.send(sm)
+			case VoteResp:
+				//fmt.Println("<<<IN<<<")
+				msg = PeerMsg.(VoteResp)
+				msg.send(sm)
+			}
+
 		}
 	}
 }
@@ -157,13 +201,19 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 			}
 			//if incomming Term is higher than local, update the Term.
 			sm.currTerm = appReq.Term
-			//Send possitive reply, as Logg has been copied to local Logg.
-			if flag == true {
-				resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
-				actionCh <- resp
+			//if false then it is Heartbeat message.
+			if flag == false {
+				//Reset the timeout timer.
+				//fmt.Println("--->>", appReq.Term, " : ", time.Now())
+				respp := Alarm{T: FTO}
+				actionCh <- respp
+				return
 			}
+			//Send possitive reply, as Logg has been copied to local Logg.
+			resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
+			actionCh <- resp
 			//Reset the timeout timer.
-			respp := Alarm{T: FCTO}
+			respp := Alarm{T: FTO}
 			actionCh <- respp
 			return
 		}
@@ -171,7 +221,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		if (sm.currTerm > appReq.Term) || (appReq.PreLoggInd > sm.LoggInd-1) {
 			resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
 			actionCh <- resp
-			respp := Alarm{T: FCTO}
+			respp := Alarm{T: FTO}
 			actionCh <- respp
 			return
 		}
@@ -179,7 +229,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		if (appReq.PreLoggInd != sm.LoggInd-1) && (appReq.PreLoggTerm == sm.currTerm) || (!reflect.DeepEqual(sm.Logg.Logg[appReq.PreLoggInd], appReq.Logg.Logg[0])) {
 			resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
 			actionCh <- resp
-			respp := Alarm{T: FCTO}
+			respp := Alarm{T: FTO}
 			actionCh <- respp
 			return
 		}
@@ -193,7 +243,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
 		actionCh <- resp
 		//Reset the timeout timer.
-		respp := Alarm{T: FCTO}
+		respp := Alarm{T: FTO}
 		actionCh <- respp
 
 	case CAND:
@@ -263,8 +313,17 @@ func (votReq VoteReq) send(sm *State_Machine) {
 		sm.currTerm = votReq.Term
 		resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: true}}
 		actionCh <- resp
+		//respp := Alarm{T: FCTO}
+		//actionCh <- respp
 
 	case CAND:
+		if sm.currTerm < votReq.Term {
+			resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
+			actionCh <- resp
+			sm.currTerm = votReq.Term
+			sm.FollSys()
+			return
+		}
 		//Reject the incomming vote Request.
 		resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
 		//fmt.Println("OUT>>>")
@@ -278,6 +337,7 @@ func (votReq VoteReq) send(sm *State_Machine) {
 		}
 		//But if incomming Term is higher than local, then step down to follower state.
 		if sm.currTerm < votReq.Term {
+			fmt.Println("###", votReq)
 			resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
 			actionCh <- resp
 			sm.currTerm = votReq.Term
