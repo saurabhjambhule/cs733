@@ -1,8 +1,62 @@
 package main
 
+import (
+	"time"
+
+	"github.com/cs733-iitb/cluster"
+)
+
+//------------------------||RAFT NODE DS||------------------------//
+//Constant for timeout.
+const (
+	FTIME = 5   //seconds
+	CTIME = 3   //seconds(re-election)
+	LTIME = 100 //milliseconds(haertbeat)
+	RANGE = 3   //timeout upperlimit in seconds for candidate and follower
+)
+
+type CommitInfo struct {
+	Data  []byte
+	Index int64
+	Err   error
+}
+
+//Contains raft node related data .
+type Config struct {
+	Id               int    //this node's id. One of the cluster's entries should match
+	LogDir           string //Log file directory for this node
+	ElectionTimeout  int
+	HeartbeatTimeout int
+	DoTO             time.Time //timeout the state after DoTO timeouts
+	ToFlag           bool
+}
+
+//Contains all raft node's data of entire cluster.
+type MyConfig struct {
+	Details []Config
+}
+
+//Contains server related data.
+type RaftMachine struct {
+	Node cluster.Server
+	SM   *State_Machine
+	Conf *Config
+}
+
+//Contains data of entire cluster.
+//and the channel through which client communicate to raft.
+type Raft struct {
+	Cluster    []*RaftMachine
+	CommitInfo chan interface{}
+}
+
+type incomming interface {
+}
+
+//----------------------||STATE MACHINE DS||----------------------//
 const (
 	FOLL  = "follower"
-	CAND  = "CandIdate"
+	CAND  = "Candidate"
 	LEAD  = "leader"
 	PEERS = 5
 	MAX   = 3
@@ -52,6 +106,16 @@ type State_Machine struct {
 	Volat_State
 	Volat_LState
 	Logg Logg
+	CommMedium
+}
+
+type CommMedium struct {
+	//Channel declaration for listening to incomming requests.
+	clientCh  chan interface{}
+	netCh     chan interface{}
+	timeoutCh chan interface{}
+	//Channel for providing respond to given request.
+	actionCh chan interface{}
 }
 
 //AppendEntriesRequest: Invoked by leader to replicate Logg entries and also used as heartbeat.
