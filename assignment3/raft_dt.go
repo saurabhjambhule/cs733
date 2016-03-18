@@ -17,7 +17,7 @@ const (
 
 type CommitInfo struct {
 	Data  []byte
-	Index int64
+	Index int32
 	Err   error
 }
 
@@ -27,8 +27,7 @@ type Config struct {
 	LogDir           string //Log file directory for this node
 	ElectionTimeout  int
 	HeartbeatTimeout int
-	DoTO             time.Time //timeout the state after DoTO timeouts
-	ToFlag           bool
+	DoTO             *time.Timer //timeout the state after DoTO timeouts
 }
 
 //Contains all raft node's data of entire cluster.
@@ -73,6 +72,7 @@ type Persi_State struct {
 	VoteGrant [2]int32
 	LoggInd   int32
 	status    string
+	LeaderId  int32
 }
 
 //Contains volatile state of servers.
@@ -98,7 +98,7 @@ type Logg struct {
 }
 
 //Stores PEERS
-var Peer map[int32]int32
+//var Peer map[int32]int32
 
 //Contains all the state with respect to given machine.
 type State_Machine struct {
@@ -116,6 +116,7 @@ type CommMedium struct {
 	timeoutCh chan interface{}
 	//Channel for providing respond to given request.
 	actionCh chan interface{}
+	CommitCh chan interface{}
 }
 
 //AppendEntriesRequest: Invoked by leader to replicate Logg entries and also used as heartbeat.

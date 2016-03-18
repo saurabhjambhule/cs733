@@ -25,11 +25,23 @@ func (server RaftMachine) Status() string {
 	return server.SM.status
 }
 
-//Id of leader. -1 if unknown
+//Current Id of leader. -1 if unknown
 func (myRaft Raft) LeaderId() int {
 	for i := 0; i < PEERS; i++ {
 		if myRaft.Cluster[i].SM.status == LEAD {
-			return i
+			return i + 1
+		}
+	}
+	return -1
+}
+
+//Blocks until leader electected and return leader id.
+func (myRaft Raft) GetLeader() int {
+	for {
+		for i := 0; i < PEERS; i++ {
+			if myRaft.Cluster[i].SM.status == LEAD {
+				return i
+			}
 		}
 	}
 	return -1
@@ -45,14 +57,15 @@ func (server RaftMachine) Shutdown() {
 }
 
 //Client's message to Raft node
-func (myRaft Raft) Append([]byte) {
+func (server RaftMachine) Append(cmdReq []byte) {
+	reqApp := Append{Data: cmdReq}
+	server.SM.CommMedium.clientCh <- reqApp
 }
 
 //Process incoming events from StateMachine.
 func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 	var incm incomming
 	for {
-		//fmt.Println("In eventProcess Node")
 		select {
 		case incm := <-sm.CommMedium.actionCh:
 			switch incm.(type) {
@@ -62,25 +75,29 @@ func processEvents(server cluster.Server, sm *State_Machine, myConf *Config) {
 				processOutbox(server, sm, msg)
 
 			case Alarm:
-				//fmt.Println("Timeout Init")
+				//	fmt.Println(">>>>", myConf.DoTO.Stop())
+
+				myConf.DoTO.Stop()
 				al := incm.(Alarm)
 				if al.T == LTO {
-					now := time.Now()
-					myConf.DoTO = now.Add(time.Duration(LTIME) * time.Millisecond)
-					myConf.ToFlag = true
+					myConf.DoTO = time.AfterFunc(time.Duration(LTIME)*time.Millisecond, func() {
+						myConf.DoTO.Stop()
+						sm.CommMedium.timeoutCh <- nil
+					})
 				}
 				if al.T == CTO {
 					myConf.ElectionTimeout = (CTIME + rand.Intn(RANGE))
-					now := time.Now()
-					myConf.DoTO = now.Add(time.Duration(myConf.ElectionTimeout) * time.Second)
-					myConf.ToFlag = true
+					myConf.DoTO = time.AfterFunc(time.Duration(myConf.ElectionTimeout)*time.Second, func() {
+						myConf.DoTO.Stop()
+						sm.CommMedium.timeoutCh <- nil
+					})
 				}
 				if al.T == FTO {
-					myConf.ToFlag = true
 					myConf.ElectionTimeout = (FTIME + rand.Intn(RANGE))
-					now := time.Now()
-					myConf.DoTO = now.Add(time.Duration(myConf.ElectionTimeout) * time.Second)
-					myConf.ToFlag = true
+					myConf.DoTO = time.AfterFunc(time.Duration(myConf.ElectionTimeout)*time.Second, func() {
+						myConf.DoTO.Stop()
+						sm.CommMedium.timeoutCh <- nil
+					})
 				}
 
 			case Commit:
@@ -146,29 +163,6 @@ func processOutbox(server cluster.Server, sm *State_Machine, msg Send) {
 	}
 }
 
-//Trigger Timeouts for State.
-func processTO(myConf *Config, sm *State_Machine) {
-	for {
-		//Send timeout to State after dur milliseconds.
-		if myConf.ToFlag {
-			for {
-				if myConf.DoTO.Before(time.Now()) {
-					//fmt.Println("--->>", myConf.Id)
-
-					//myConf.ToFlag = false
-					//fmt.Println("Timeout Called")
-					//fmt.Println("##***>>", sm.currTerm)
-					//fmt.Println("~~~>>", sm.currTerm, " : ", time.Now(), " = ", myConf.ElectionTimeout)
-					sm.CommMedium.timeoutCh <- nil
-					//fmt.Println("##***>>", sm.id, sm.CommMedium)
-
-					break
-				}
-			}
-		}
-	}
-}
-
 /*func storeDate(ind int, data Logg) {
 	for i := ind; i < len(data); i++ {
 		err = lg.Append(string(data[i]))
@@ -210,12 +204,14 @@ func initializeNode(id int, myConf *Config, sm *State_Machine) cluster.Server {
 	gob.Register(VoteResp{})
 	gob.Register(StateStore{})
 	gob.Register(LoggStore{})
+	gob.Register(CommitInfo{})
 
 	//Channel initialization.
 	sm.CommMedium.clientCh = make(chan interface{})
 	sm.CommMedium.netCh = make(chan interface{})
 	sm.CommMedium.timeoutCh = make(chan interface{})
 	sm.CommMedium.actionCh = make(chan interface{})
+	sm.CommMedium.CommitCh = make(chan interface{})
 
 	rand.Seed(time.Now().UTC().UnixNano() * int64(id))
 	//Set up details about cluster nodes form json file.
@@ -225,10 +221,7 @@ func initializeNode(id int, myConf *Config, sm *State_Machine) cluster.Server {
 	}
 	//Initialize the Log and Node configuration.
 	logConfig(id, myConf)
-	myConf.ToFlag = false
-	now := time.Now()
-	//Follower timeout init.
-	myConf.DoTO = now.Add(time.Duration(FTIME) * time.Minute)
+	myConf.DoTO = time.AfterFunc(10, func() {})
 
 	return server
 }
@@ -236,8 +229,6 @@ func initializeNode(id int, myConf *Config, sm *State_Machine) cluster.Server {
 func (myRaft Raft) newNode(myConf *Config, server cluster.Server, sm *State_Machine) {
 	//Start backaground process to listen incomming packets from other servers.
 	go processInbox(server, sm)
-	//Start background process to trigger timeout events.
-	go processTO(myConf, sm)
 	//Start StateMachine in follower state.
 	go sm.FollSys()
 	//Raft node Processing.
