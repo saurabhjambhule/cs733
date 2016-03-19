@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 )
@@ -27,6 +28,7 @@ func (sm *State_Machine) FollSys() {
 	sm.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
 	//Set timeout
 	//fmt.Println(">>>", sm)
+
 	resp := Alarm{T: FTO} //200
 	sm.CommMedium.actionCh <- resp
 	sm.EventProcess()
@@ -90,17 +92,19 @@ func (sm *State_Machine) EventProcess() {
 			//Generate corrosponding response to the request.
 			switch sm.status {
 			case FOLL:
-				//fmt.Println("***>>", sm.currTerm)
+				fmt.Println("~~~~~~>>", sm.id)
 				//Change state to CandIdate.
 				//fmt.Println("--->>", sm.id, " : ", time.Now())
 				sm.candSys()
 
 			case CAND:
+				fmt.Println("--))", sm.id)
+
 				//Start election for next Term again.
 				sm.candSys()
 
 			case LEAD:
-				//fmt.Println("Heartbeat-", len(sm.Logg.Logg))
+				//fmt.Println("Heartbeat-")
 				//Commit the Logg and send heartbeat msg to all other servers.
 				sm.commitLogg()
 				if len(sm.Logg.Logg) == 0 {
@@ -150,40 +154,57 @@ func (sm *State_Machine) EventProcess() {
 //Process incommimg append entry request.
 //Incoming Logg or any incoming variable means the Logg or variable form the given incomming request or respoonse msg.
 func (appReq AppEntrReq) send(sm *State_Machine) {
-	//fmt.Println("--->", sm.id, appReq, len(appReq.Logg.Logg))
 
 	switch sm.status {
 	//For every incoming signal from leader to follower reset the timeout time as leader is still alive.
 	case FOLL:
 		//fmt.Println("--->>>>", appReq)
 
-		flag := false
+		if len(appReq.Logg.Logg) == 0 {
+			//Reset the timeout timer.
+			sm.currTerm = appReq.Term
+			respp := Alarm{T: FTO}
+			sm.CommMedium.actionCh <- respp
+			sm.commitLogg()
+			return
+		}
 		//if follower dont have any entries in Logg meaning he just joined the cluster, then coppy incoming Logg to local Logg.
 		//Or if Logg is NULL i.e. Heartbeat msg, reset the timeout.
-		if len(appReq.Logg.Logg) == 0 {
+		if len(sm.Logg.Logg) == 0 {
+			//	fmt.Println(">>>###########", appReq, sm.currTerm, sm.id)
+			if sm.currTerm > appReq.Term {
+				fmt.Println("111")
+				resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
+				sm.CommMedium.actionCh <- resp
+				respp := Alarm{T: FTO}
+				sm.CommMedium.actionCh <- respp
+				return
+			}
 			//fmt.Println(">>> 1 :", sm.id)
 			for i := 0; i < len(appReq.Logg.Logg); i++ {
 				sm.Logg.Logg = append(sm.Logg.Logg, appReq.Logg.Logg[i])
 				sm.LoggInd++
-				flag = true
 			}
 			//if incomming Term is higher than local, update the Term.
 			sm.currTerm = appReq.Term
+			respp := Alarm{T: FTO}
+			sm.CommMedium.actionCh <- respp
+
 			//if false then it is Heartbeat message.
-			if flag == false {
+			/*if flag == false {
 				//Reset the timeout timer.
-				//fmt.Println("--->>", appReq.Term, " : ", time.Now())
 				respp := Alarm{T: FTO}
 				sm.CommMedium.actionCh <- respp
 				sm.commitLogg()
 				return
-			}
+			}*/
 			//Send possitive reply, as Logg has been copied to local Logg.
 			resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: true}}
 			sm.CommMedium.actionCh <- resp
 			//Reset the timeout timer.
-			respp := Alarm{T: FTO}
-			sm.CommMedium.actionCh <- respp
+
+			fmt.Println(">>>##", sm.id, appReq, len(appReq.Logg.Logg))
+
 			return
 		}
 		//fmt.Println(">>>", sm.id, appReq, len(appReq.Logg.Logg))
@@ -192,8 +213,9 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		//fmt.Println(((appReq.PreLoggInd > sm.LoggInd-1) && len(sm.Logg.Logg) != 0))
 
 		if (sm.currTerm > appReq.Term) || ((appReq.PreLoggInd > sm.LoggInd-1) && len(sm.Logg.Logg) != 0) {
-			//	fmt.Println(">>> 2 :", sm.id, "=", appReq.Term)
-			//	fmt.Println(appReq.PreLoggInd, " ~~ ", sm.LoggInd-1)
+			fmt.Println(">>> 2 :", sm.id, "=", appReq.Term)
+			//fmt.Println((sm.currTerm > appReq.Term), (appReq.PreLoggInd > sm.LoggInd-1), (len(sm.Logg.Logg) != 0), appReq.PreLoggInd, " ~~ ", sm.LoggInd-1, " ~~ ", len(sm.Logg.Logg))
+			//fmt.Println(appReq.Logg, " ** ", sm.Logg.Logg)
 
 			resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
 			sm.CommMedium.actionCh <- resp
@@ -208,7 +230,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 		//fmt.Println(appReq.PreLoggInd, "~~", sm.LoggInd-1, "~~", appReq.PreLoggTerm, "~~", sm.currTerm)
 
 		if ((appReq.PreLoggInd != sm.LoggInd-1) && (len(sm.Logg.Logg) != 0)) && (appReq.PreLoggTerm == sm.currTerm) || ((len(sm.Logg.Logg) != 0) && (!reflect.DeepEqual(sm.Logg.Logg[appReq.PreLoggInd], appReq.Logg.Logg[0]))) {
-			//	fmt.Println(">>> 3:", sm.id)
+			fmt.Println(">>> 3 :", sm.id, "=", appReq.Term)
 
 			resp := Send{PeerId: appReq.LeaderId, Event: AppEntrResp{Term: sm.currTerm, Succ: false}}
 			sm.CommMedium.actionCh <- resp
@@ -216,7 +238,7 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 			sm.CommMedium.actionCh <- respp
 			return
 		}
-		//	fmt.Println(">>>$$", sm.id, appReq, len(appReq.Logg.Logg))
+		fmt.Println(">>>$$", sm.id, appReq, len(appReq.Logg.Logg))
 
 		//Update local CommitIndex with minimum of incomming LeaderCommit and local Logg Index
 		sm.CommitIndex = int32(math.Min(float64(appReq.LeaderCom), float64(sm.LoggInd-1)))
@@ -272,19 +294,36 @@ func (appReq AppEntrReq) send(sm *State_Machine) {
 
 //Process incommimg append entry response.
 func (appRes AppEntrResp) send(sm *State_Machine) {
+	//fmt.Println("--->>", appRes, "-", sm.id, sm.status)
+
 	switch sm.status {
 	case LEAD:
 		//On positive response, update MatchIndex and NextIndex.
 		if appRes.Succ == true {
+			//fmt.Println("--->", appRes, "-", sm.id, sm.status)
 			sm.MatchIndex[appRes.Peer-1] = sm.LoggInd - 1
 			sm.NextIndex[appRes.Peer-1] = sm.LoggInd
+			//fmt.Println("---.>", appRes, "-", sm.id, sm.status)
 		}
 		//On negative response, decreament the NextIndex with respect to incomming Peer and resend append entry request.
 		if appRes.Succ == false {
-			sm.NextIndex[appRes.Peer-1] -= 1
+			fmt.Println("----->", appRes, sm.currTerm, "-", sm.id, sm.status, sm.NextIndex)
+			if appRes.Term > sm.currTerm {
+				sm.currTerm = appRes.Term
+				sm.FollSys()
+			}
 			temp := sm.NextIndex[appRes.Peer-1] - 1
+			if temp < 0 {
+				temp = 0
+			}
+			fmt.Println("#--->..>", temp, sm.Logg.Logg)
+			fmt.Println("#----->..>", sm.Logg.Logg[temp:])
+
 			entry := sm.Logg.Logg[temp:]
+
 			entry1 := Logg{Logg: entry}
+			fmt.Println("**-----..>", appRes, "-", sm.id, sm.status)
+
 			//Check for Logg to be commited.
 			resp := Send{PeerId: appRes.Peer, Event: AppEntrReq{Term: sm.currTerm, LeaderId: sm.id, PreLoggInd: temp, PreLoggTerm: sm.Logg.Logg[temp].Term, LeaderCom: sm.CommitIndex, Logg: entry1}}
 			sm.CommMedium.actionCh <- resp
@@ -308,8 +347,8 @@ func (votReq VoteReq) send(sm *State_Machine) {
 		sm.currTerm = votReq.Term
 		resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: true}}
 		sm.CommMedium.actionCh <- resp
-		//respp := Alarm{T: FCTO}
-		//actionCh <- respp
+		respp := Alarm{T: FTO}
+		sm.CommMedium.actionCh <- respp
 
 	case CAND:
 		if sm.currTerm < votReq.Term {
@@ -325,6 +364,8 @@ func (votReq VoteReq) send(sm *State_Machine) {
 		sm.CommMedium.actionCh <- resp
 
 	case LEAD:
+		//fmt.Println("*******>", sm.id, votReq.CandId, votReq)
+
 		//Reply negative  in any case for vote request.
 		if sm.currTerm > votReq.Term {
 			resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
@@ -333,10 +374,13 @@ func (votReq VoteReq) send(sm *State_Machine) {
 		//But if incomming Term is higher than local, then step down to follower state.
 		if sm.currTerm < votReq.Term {
 			//fmt.Println("###", votReq)
-			resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
-			sm.CommMedium.actionCh <- resp
 			sm.currTerm = votReq.Term
-			sm.FollSys()
+			if votReq.PreLoggTerm > sm.currTerm {
+				resp := Send{PeerId: votReq.CandId, Event: VoteResp{Term: sm.currTerm, VoteGrant: false}}
+				sm.CommMedium.actionCh <- resp
+				sm.currTerm = votReq.Term
+				sm.FollSys()
+			}
 		}
 	}
 }
@@ -394,6 +438,7 @@ func (app Append) commit(sm *State_Machine) {
 	case LEAD:
 		//Append the commond into local Logg.
 		var temp int
+		prevInd := sm.LoggInd
 		entry := Logg{Logg: []MyLogg{{-1, " "}, {sm.currTerm, string(app.Data)}}}
 		sm.LoggInd, sm.Logg = copyLogg(sm.currTerm, sm.LoggInd, sm.LoggInd-1, sm.Logg, entry)
 		entry11 := sm.Logg.Logg
@@ -408,7 +453,7 @@ func (app Append) commit(sm *State_Machine) {
 		entry111 := sm.Logg.Logg[temp:]
 		resp := LoggStore{Data: entry111}
 		//Send the append entry request to all other servers.
-		respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, LeaderId: sm.id, PreLoggInd: sm.LoggInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, LeaderCom: sm.CommitIndex, Logg: entry1}}
+		respp := Send{PeerId: 0, Event: AppEntrReq{Term: sm.currTerm, LeaderId: sm.id, PreLoggInd: prevInd - 1, PreLoggTerm: sm.Logg.Logg[sm.LoggInd-1].Term, LeaderCom: sm.CommitIndex, Logg: entry1}}
 		//fmt.Println("--->>>>", respp)
 
 		sm.CommMedium.actionCh <- resp

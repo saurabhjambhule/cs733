@@ -10,10 +10,10 @@ import (
 //------------------------||RAFT NODE DS||------------------------//
 //Constant for timeout.
 const (
-	FTIME = 5   //seconds
-	CTIME = 3   //seconds(re-election)
-	LTIME = 100 //milliseconds(haertbeat)
-	RANGE = 3   //timeout upperlimit in seconds for candidate and follower
+	FTIME = 3   //seconds
+	CTIME = 5   //seconds(re-election)
+	LTIME = 200 //milliseconds(haertbeat)
+	RANGE = 5   //timeout upperlimit in seconds for candidate and follower
 )
 
 type CommitInfo struct {
@@ -28,7 +28,8 @@ type Config struct {
 	LogDir           string //Log file directory for this node
 	ElectionTimeout  int
 	HeartbeatTimeout int
-	DoTO             *time.Timer //timeout the state after DoTO
+	DoTO             time.Time //timeout the state after DoTO timeouts
+	ToFlag           bool
 	lg               *log.Log
 }
 
@@ -47,8 +48,8 @@ type RaftMachine struct {
 //Contains data of entire cluster.
 //and the channel through which client communicate to raft.
 type Raft struct {
-	Cluster    []*RaftMachine
-	CommitInfo chan interface{}
+	Cluster []*RaftMachine
+	//CommitInfo chan interface{}
 }
 
 type incomming interface {
