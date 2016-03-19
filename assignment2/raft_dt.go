@@ -1,10 +1,69 @@
 package main
 
+import (
+	"time"
+
+	"github.com/cs733-iitb/cluster"
+	"github.com/cs733-iitb/log"
+)
+
+//------------------------||RAFT NODE DS||------------------------//
+//Constant for timeout.
+const (
+	FTIME = 5   //seconds
+	CTIME = 3   //seconds(re-election)
+	LTIME = 100 //milliseconds(haertbeat)
+	RANGE = 3   //timeout upperlimit in seconds for candidate and follower
+)
+
+type CommitInfo struct {
+	Data  []byte
+	Index int32
+	Err   error
+}
+
+//Contains raft node related data .
+type Config struct {
+	Id               int    //this node's id. One of the cluster's entries should match
+	LogDir           string //Log file directory for this node
+	ElectionTimeout  int
+	HeartbeatTimeout int
+	DoTO             *time.Timer //timeout the state after DoTO
+	lg               *log.Log
+}
+
+//Contains all raft node's data of entire cluster.
+type MyConfig struct {
+	Details []Config
+}
+
+//Contains server related data.
+type RaftMachine struct {
+	Node cluster.Server
+	SM   *State_Machine
+	Conf *Config
+}
+
+//Contains data of entire cluster.
+//and the channel through which client communicate to raft.
+type Raft struct {
+	Cluster    []*RaftMachine
+	CommitInfo chan interface{}
+}
+
+type incomming interface {
+}
+
+//----------------------||STATE MACHINE DS||----------------------//
 const (
 	FOLL  = "follower"
-	CAND  = "candidate"
+	CAND  = "Candidate"
 	LEAD  = "leader"
 	PEERS = 5
+	MAX   = 3
+	FTO   = 0
+	CTO   = 1
+	LTO   = 2
 )
 
 //Contains persistent state of all servers.
@@ -12,111 +71,123 @@ type Persi_State struct {
 	id        int32
 	currTerm  int32
 	votedFor  int32
-	voteGrant [2]int32
-	logInd    int32
+	VoteGrant [2]int32
+	LoggInd   int32
 	status    string
+	LeaderId  int32
 }
 
 //Contains volatile state of servers.
 type Volat_State struct {
-	commitIndex int32
-	lastApplied int32
+	CommitIndex int32
+	LastApplied int32
 }
 
 //Contains volatile state of the leader.
 type Volat_LState struct {
-	nextIndex  [5]int32
-	matchIndex [5]int32
+	NextIndex  [PEERS]int32
+	MatchIndex [PEERS]int32
 }
 
-//Stores log entries
-type MyLog struct {
-	term int32
-	log  string
+//Stores Logg entries
+type MyLogg struct {
+	Term int32
+	Logg string
 }
 
-type Log struct {
-	log []MyLog
+type Logg struct {
+	Logg []MyLogg
 }
 
-//Stores peers
-var peer map[int32]int32
+//Stores PEERS
+//var Peer map[int32]int32
 
 //Contains all the state with respect to given machine.
 type State_Machine struct {
 	Persi_State
 	Volat_State
 	Volat_LState
-	log Log
+	Logg Logg
+	CommMedium
 }
 
-//AppendEntriesRequest: Invoked by leader to replicate log entries and also used as heartbeat.
+type CommMedium struct {
+	//Channel declaration for listening to incomming requests.
+	clientCh  chan interface{}
+	netCh     chan interface{}
+	timeoutCh chan interface{}
+	//Channel for providing respond to given request.
+	actionCh chan interface{}
+	CommitCh chan interface{}
+}
+
+//AppendEntriesRequest: Invoked by leader to replicate Logg entries and also used as heartbeat.
 type AppEntrReq struct {
-	term       int32
-	leaderId   int32
-	preLogInd  int32
-	preLogTerm int32
-	leaderCom  int32
-	log        Log
+	Term        int32
+	LeaderId    int32
+	PreLoggInd  int32
+	PreLoggTerm int32
+	LeaderCom   int32
+	Logg        Logg
 }
 
 //AppendEntriesResponse: Invoked by servers on AppendEntriesRequest.
 type AppEntrResp struct {
-	peer int32
-	term int32
-	succ bool
+	Peer int32
+	Term int32
+	Succ bool
 }
 
-//VoteRequest: Invoked by candidates to gather votes.
+//VoteRequest: Invoked by CandIdates to gather votes.
 type VoteReq struct {
-	term       int32
-	candId     int32
-	preLogInd  int32
-	preLogTerm int32
+	Term        int32
+	CandId      int32
+	PreLoggInd  int32
+	PreLoggTerm int32
 }
 
 //VoteResponse: Invoked by servers on VoteRequest.
 type VoteResp struct {
-	term      int32
-	voteGrant bool
+	Term      int32
+	VoteGrant bool
 }
 
-//This is a request from the layer above to append the data to the replicated log.
+//This is a request from the layer above to append the data to the replicated Logg.
 type Append struct {
-	data []byte
+	Data []byte
 }
 
-//A timeout event.
+//A timeout Event.`
 type Timeout struct {
 }
 
-//Send this event to a remote node.
+//Send this Event to a remote node.
 type Send struct {
-	peerId int32
-	event  interface{}
+	PeerId int32
+	Event  interface{}
 }
 
-//Invoked by the leader on Append request. Provides (index + data) or report an error (data + err) to the layer above.
+//Invoked by the leader on Append request. Provides (Index + data) or report an error (data + err) to the layer above.
 type Commit struct {
-	index int32
-	data  []byte
-	err   []byte
+	Index int32
+	Data  []byte
+	Err   []byte
 }
 
 //Send a Timeout after t milliseconds.
 type Alarm struct {
-	t int
+	T int
 }
 
-//This is an indication to the node to store the log at the given index.
-type LogStore struct {
-	index int32
-	data  []byte
+//This is an indication to the node to store the Logg at the given Index.
+type LoggStore struct {
+	//Index int32
+	Data []MyLogg
 }
 
 //This is an indication to the node to store the state in the memory.
 type StateStore struct {
-	data []byte
+	Data []byte
 }
 
 //Returns respond to given request.
