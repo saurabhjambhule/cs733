@@ -10,10 +10,11 @@ import (
 //------------------------||RAFT NODE DS||------------------------//
 //Constant for timeout.
 const (
-	FTIME = 1500 //seconds
-	CTIME = 1500 //seconds(re-election)
-	LTIME = 150  //milliseconds(haertbeat)
-	RANGE = 1500 //timeout upperlimit in seconds for candidate and follower
+	FTIME       = 1500 //seconds
+	CTIME       = 1500 //seconds(re-election)
+	LTIME       = 150  //milliseconds(haertbeat)
+	RANGE       = 1500 //timeout upperlimit in seconds for candidate and follower
+	TESTENTRIES = 1000
 )
 
 type CommitInfo struct {

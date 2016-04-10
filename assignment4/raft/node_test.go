@@ -1,4 +1,4 @@
-package main
+package node
 
 import (
 	"fmt"
@@ -9,7 +9,10 @@ import (
 
 	"github.com/cs733-iitb/cluster"
 	"github.com/cs733-iitb/cluster/mock"
+	"github.com/saurabhjambhule/cs733/assignment4/raft/sm"
 )
+
+//"github.com/saurabhjambhule/cs733/assignment4/raft/sm"
 
 var cnt int
 
@@ -35,8 +38,8 @@ func TestBasic(t *testing.T) {
 		for j := 1; j <= 5; j++ {
 			str := "test - " + strconv.Itoa(j)
 			ci := <-myRaft.Cluster[i].SM.CommMedium.CommitCh
-			tmp := ci.(CommitInfo)
-			expect(t, tmp, str, myRaft.Cluster[i].SM.id)
+			tmp := ci.(sm.CommitInfo)
+			expect(t, tmp, str, myRaft.Cluster[i].SM.Id)
 		}
 
 	}
@@ -47,13 +50,10 @@ func TestBasic(t *testing.T) {
 	for i := 0; i < PEERS; i++ {
 		if i != leaderId {
 			time.Sleep(1 * time.Second)
-			myRaft.Cluster[i].SM.CommMedium.timeoutCh <- nil
+			myRaft.Cluster[i].SM.CommMedium.TimeoutCh <- nil
 			break
 		}
 	}
-	//time.Sleep(1 * time.Second)
-
-	//	myRaft.Cluster[leaderId].SM.CommMedium.timeoutCh <- nil
 
 	//Creating partion.
 	L := myRaft.GetLeader()
@@ -152,7 +152,7 @@ func TestBasic(t *testing.T) {
 	_ = leaderId
 }
 
-func expect(t *testing.T, ci CommitInfo, str string, id int32) {
+func expect(t *testing.T, ci sm.CommitInfo, str string, id int32) {
 	//fmt.Println("~~~~>", id)
 	cnt++
 	if ci.Err != nil {
@@ -176,12 +176,12 @@ func (myRaft Raft) makeRafts() Raft {
 	for id := 1; id <= PEERS; id++ {
 		//fmt.Println(id)
 		myNode := new(RaftMachine)
-		sm := new(State_Machine)
+		SM := new(sm.State_Machine)
 		myConf := new(Config)
-		server := createNode(id, myConf, sm)
-		sm.id = int32(id)
+		server := createNode(id, myConf, SM)
+		SM.Id = int32(id)
 		myNode.Node = server
-		myNode.SM = sm
+		myNode.SM = SM
 		myNode.Conf = myConf
 		myRaft.Cluster = append(myRaft.Cluster, myNode)
 		go myRaft.startNode(myRaft.Cluster[id-1].Conf, myRaft.Cluster[id-1].Node, myRaft.Cluster[id-1].SM)
@@ -200,14 +200,14 @@ func (myRaft Raft) makeMockRafts() (Raft, *mock.MockCluster) {
 	for id := 1; id <= PEERS; id++ {
 		//Ojects to store statemachine, config and server node.
 		myNode := new(RaftMachine)
-		sm := new(State_Machine)
+		SM := new(sm.State_Machine)
 		myConf := new(Config)
 
 		//initialize config and server object.
-		server := createMockNode(id, myConf, sm, cl)
-		sm.id = int32(id)
+		server := createMockNode(id, myConf, SM, cl)
+		SM.Id = int32(id)
 		myNode.Node = server
-		myNode.SM = sm
+		myNode.SM = SM
 		myNode.Conf = myConf
 		//append object related to node into raft array.
 		myRaft.Cluster = append(myRaft.Cluster, myNode)

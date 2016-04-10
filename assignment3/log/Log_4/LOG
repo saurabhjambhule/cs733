@@ -1,0 +1,121 @@
+=============== Apr 10, 2016 (IST) ===============
+17:11:23.724814 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+17:11:23.725224 db@open opening
+17:11:23.725649 version@stat F·[] S·0B[] Sc·[]
+17:11:23.725951 db@janitor F·2 G·0
+17:11:23.726074 db@open done T·796.219µs
+17:11:25.681500 transaction@flush created L0@2 N·2 S·282B "0,v1":"las..dex,v2"
+17:11:25.681546 version@stat F·[1] S·282B[282B] Sc·[0.25]
+17:11:25.682429 transaction@flush created L0@3 N·2 S·282B "1,v3":"las..dex,v4"
+17:11:25.682457 version@stat F·[2] S·564B[564B] Sc·[0.50]
+17:11:25.683352 transaction@flush created L0@4 N·2 S·282B "2,v5":"las..dex,v6"
+17:11:25.683378 version@stat F·[3] S·846B[846B] Sc·[0.75]
+17:11:25.684721 transaction@flush created L0@5 N·2 S·282B "3,v7":"las..dex,v8"
+17:11:25.684749 version@stat F·[4] S·1KiB[1KiB] Sc·[1.00]
+17:11:25.684982 table@compaction L0·4 -> L1·0 S·1KiB Q·8
+17:11:25.685526 table@build created L1@6 N·5 S·337B "0,v1":"las..dex,v8"
+17:11:25.685564 version@stat F·[0 1] S·337B[0B 337B] Sc·[0.00 0.00]
+17:11:25.685733 transaction@flush created L0@7 N·2 S·282B "4,v9":"las..dex,v10"
+17:11:25.685982 table@compaction committed F-3 S-791B Ke·0 D·3 T·975.45µs
+17:11:25.686059 table@remove removed @5
+17:11:25.686135 table@remove removed @4
+17:11:25.686209 table@remove removed @3
+17:11:25.686285 table@remove removed @2
+17:11:25.686317 version@stat F·[1 1] S·619B[282B 337B] Sc·[0.25 0.00]
+17:11:28.711120 transaction@flush created L0@8 N·2 S·282B "5,v11":"las..dex,v12"
+17:11:28.711188 version@stat F·[2 1] S·901B[564B 337B] Sc·[0.50 0.00]
+17:11:28.711863 transaction@flush created L0@9 N·2 S·282B "6,v13":"las..dex,v14"
+17:11:28.711932 version@stat F·[3 1] S·1KiB[846B 337B] Sc·[0.75 0.00]
+17:11:28.713144 transaction@flush created L0@10 N·2 S·282B "7,v15":"las..dex,v16"
+17:11:28.713203 version@stat F·[4 1] S·1KiB[1KiB 337B] Sc·[1.00 0.00]
+17:11:28.713839 transaction@flush created L0@11 N·2 S·282B "8,v17":"las..dex,v18"
+17:11:28.713874 version@stat F·[5 1] S·1KiB[1KiB 337B] Sc·[1.25 0.00]
+17:11:28.714217 table@compaction L0·5 -> L1·1 S·1KiB Q·18
+17:11:28.714474 transaction@flush created L0@12 N·2 S·283B "9,v19":"las..dex,v20"
+17:11:28.714520 version@stat F·[6 1] S·1KiB[1KiB 337B] Sc·[1.50 0.00]
+17:11:28.715470 table@build created L1@13 N·10 S·425B "0,v1":"las..dex,v18"
+17:11:28.715489 transaction@flush created L0@14 N·2 S·285B "10,v21":"las..dex,v22"
+17:11:28.715518 version@stat F·[1 1] S·708B[283B 425B] Sc·[0.25 0.00]
+17:11:28.715692 table@compaction committed F-5 S-1KiB Ke·0 D·5 T·1.444744ms
+17:11:28.715806 table@remove removed @11
+17:11:28.715894 table@remove removed @10
+17:11:28.715959 table@remove removed @9
+17:11:28.716038 table@remove removed @8
+17:11:28.716095 table@remove removed @7
+17:11:28.716170 table@remove removed @6
+17:11:28.716221 version@stat F·[2 1] S·993B[568B 425B] Sc·[0.50 0.00]
+17:11:28.716881 transaction@flush created L0@15 N·2 S·285B "11,v23":"las..dex,v24"
+17:11:28.716913 version@stat F·[3 1] S·1KiB[853B 425B] Sc·[0.75 0.00]
+17:11:28.717434 transaction@flush created L0@16 N·2 S·285B "12,v25":"las..dex,v26"
+17:11:28.717469 version@stat F·[4 1] S·1KiB[1KiB 425B] Sc·[1.00 0.00]
+17:11:28.717746 table@compaction L0·4 -> L1·1 S·1KiB Q·26
+17:11:28.718175 table@build created L1@17 N·14 S·507B "0,v1":"las..dex,v26"
+17:11:28.718208 version@stat F·[0 1] S·507B[0B 507B] Sc·[0.00 0.00]
+17:11:28.718413 table@compaction committed F-4 S-1KiB Ke·0 D·4 T·641.919µs
+17:11:28.718479 table@remove removed @16
+17:11:28.718532 table@remove removed @15
+17:11:28.718659 table@remove removed @14
+17:11:28.718727 table@remove removed @12
+17:11:28.718799 table@remove removed @13
+=============== Apr 10, 2016 (IST) ===============
+17:15:40.728506 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+17:15:40.729413 version@stat F·[0 1] S·507B[0B 507B] Sc·[0.00 0.00]
+17:15:40.729434 db@open opening
+17:15:40.729522 journal@recovery F·1
+17:15:40.730155 journal@recovery recovering @1
+17:15:40.730912 version@stat F·[0 1] S·507B[0B 507B] Sc·[0.00 0.00]
+17:15:40.731835 db@janitor F·3 G·0
+17:15:40.731862 db@open done T·2.405172ms
+17:15:42.459062 transaction@flush created L0@20 N·2 S·284B "13,v27":"las..dex,v28"
+17:15:42.459100 version@stat F·[1 1] S·791B[284B 507B] Sc·[0.25 0.00]
+17:15:42.467348 transaction@flush created L0@21 N·2 S·284B "14,v29":"las..dex,v30"
+17:15:42.467382 version@stat F·[2 1] S·1KiB[568B 507B] Sc·[0.50 0.00]
+17:15:42.468172 transaction@flush created L0@22 N·2 S·284B "15,v31":"las..dex,v32"
+17:15:42.468217 version@stat F·[3 1] S·1KiB[852B 507B] Sc·[0.75 0.00]
+17:15:42.468964 transaction@flush created L0@23 N·2 S·284B "16,v33":"las..dex,v34"
+17:15:42.468998 version@stat F·[4 1] S·1KiB[1KiB 507B] Sc·[1.00 0.00]
+17:15:42.469299 table@compaction L0·4 -> L1·1 S·1KiB Q·34
+17:15:42.470307 table@build created L1@24 N·18 S·580B "0,v1":"las..dex,v34"
+17:15:42.470355 version@stat F·[0 1] S·580B[0B 580B] Sc·[0.00 0.00]
+17:15:42.470543 table@compaction committed F-4 S-1KiB Ke·0 D·4 T·1.038367ms
+17:15:42.470698 table@remove removed @23
+17:15:42.470769 table@remove removed @22
+17:15:42.470846 table@remove removed @21
+17:15:42.470955 table@remove removed @20
+17:15:42.471041 table@remove removed @17
+17:15:42.471503 transaction@flush created L0@25 N·2 S·284B "17,v35":"las..dex,v36"
+17:15:42.471533 version@stat F·[1 1] S·864B[284B 580B] Sc·[0.25 0.00]
+17:15:45.483191 transaction@flush created L0@26 N·2 S·284B "18,v37":"las..dex,v38"
+17:15:45.483249 version@stat F·[2 1] S·1KiB[568B 580B] Sc·[0.50 0.00]
+17:15:45.484377 transaction@flush created L0@27 N·2 S·284B "19,v39":"las..dex,v40"
+17:15:45.484422 version@stat F·[3 1] S·1KiB[852B 580B] Sc·[0.75 0.00]
+17:15:45.485272 transaction@flush created L0@28 N·2 S·284B "20,v41":"las..dex,v42"
+17:15:45.485328 version@stat F·[4 1] S·1KiB[1KiB 580B] Sc·[1.00 0.00]
+17:15:45.485696 table@compaction L0·4 -> L1·1 S·1KiB Q·42
+17:15:45.486176 transaction@flush created L0@29 N·2 S·284B "21,v43":"las..dex,v44"
+17:15:45.486235 version@stat F·[5 1] S·1KiB[1KiB 580B] Sc·[1.25 0.00]
+17:15:45.487290 transaction@flush created L0@30 N·2 S·285B "22,v45":"las..dex,v46"
+17:15:45.487546 version@stat F·[6 1] S·2KiB[1KiB 580B] Sc·[1.50 0.00]
+17:15:45.487775 table@build created L1@31 N·22 S·645B "0,v1":"las..dex,v42"
+17:15:45.487850 version@stat F·[2 1] S·1KiB[569B 645B] Sc·[0.50 0.00]
+17:15:45.488078 table@compaction committed F-4 S-1KiB Ke·0 D·4 T·2.338775ms
+17:15:45.488252 table@remove removed @28
+17:15:45.488411 table@remove removed @27
+17:15:45.488558 table@remove removed @26
+17:15:45.488666 table@remove removed @25
+17:15:45.488778 table@remove removed @24
+17:15:45.488885 transaction@flush created L0@32 N·2 S·285B "23,v47":"las..dex,v48"
+17:15:45.488938 version@stat F·[3 1] S·1KiB[854B 645B] Sc·[0.75 0.00]
+17:15:45.489818 transaction@flush created L0@33 N·2 S·285B "24,v49":"las..dex,v50"
+17:15:45.489857 version@stat F·[4 1] S·1KiB[1KiB 645B] Sc·[1.00 0.00]
+17:15:45.490223 table@compaction L0·4 -> L1·1 S·1KiB Q·50
+17:15:45.491447 table@build created L1@34 N·26 S·733B "0,v1":"las..dex,v50"
+17:15:45.491512 version@stat F·[0 1] S·733B[0B 733B] Sc·[0.00 0.00]
+17:15:45.491410 transaction@flush created L0@35 N·2 S·285B "25,v51":"las..dex,v52"
+17:15:45.491759 table@compaction committed F-4 S-1KiB Ke·0 D·4 T·1.505396ms
+17:15:45.491887 table@remove removed @33
+17:15:45.491983 table@remove removed @32
+17:15:45.492099 table@remove removed @30
+17:15:45.492202 table@remove removed @29
+17:15:45.492367 table@remove removed @31
+17:15:45.492405 version@stat F·[1 1] S·1018B[285B 733B] Sc·[0.25 0.00]
