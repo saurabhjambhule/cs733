@@ -1,4 +1,4 @@
-package node
+package raft
 
 import (
 	"encoding/gob"
@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	FTIME       = 1500 //seconds
-	CTIME       = 1500 //seconds(re-election)
-	LTIME       = 150  //milliseconds(haertbeat)
-	RANGE       = 1500 //timeout upperlimit in seconds for candIdate and follower
+	FTIME       = 1000 //seconds
+	CTIME       = 1000 //seconds(re-election)
+	LTIME       = 1000 //milliseconds(haertbeat)
+	RANGE       = 1000 //timeout upperlimit in seconds for candIdate and follower
 	TESTENTRIES = 1000
 )
 const (
@@ -39,7 +39,7 @@ type Config struct {
 	ElectionTimeout  int
 	HeartbeatTimeout int
 	DoTO             *time.Timer //timeout the state after DoTO
-	lg               *log.Log
+	Lg               *log.Log
 }
 
 //Contains all raft node's data of entire cluster.
@@ -49,16 +49,16 @@ type MyConfig struct {
 
 //Contains server related data.
 type RaftMachine struct {
-	Node cluster.Server
-	SM   *sm.State_Machine
-	Conf *Config
+	Node         cluster.Server
+	SM           *sm.State_Machine
+	Conf         *Config
+	CommitInfoCh chan interface{}
 }
 
 //Contains data of entire cluster.
 //and the channel through which client communicate to raft.
 type Raft struct {
-	Cluster    []*RaftMachine
-	CommitInfo chan interface{}
+	Cluster []*RaftMachine
 }
 
 type incomming interface {
@@ -88,8 +88,19 @@ func (myRaft Raft) GetLeader() int {
 }
 
 //Signal to shut down all goroutines, stop sockets, flush log and close it, cancel timers.
-func Shutdown(server cluster.Server) {
-	server.Close()
+func (server RaftMachine) Shutdown(cl *mock.MockCluster) {
+	server.SM.Status = FOLL
+	cl.Servers[int(server.SM.Id)].Close()
+	resp := sm.Alarm{T: FTO} //200
+	server.SM.CommMedium.ActionCh <- resp
+	server.SM.VotedFor = 0 //Reinitialize VoteFor
+	server.SM.LeaderId = 0
+	server.SM.VoteGrant[0] = 0 //This is positive VoteGrant counter initialized to 1 i.e. self vote
+	server.SM.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
+	for i := 0; i < 1; i++ {
+		server.SM.CommMedium.ShutdownCh <- nil
+	}
+	//server.SM.FollSys()
 }
 
 //Client's message to Raft node
@@ -138,9 +149,9 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 
 			case sm.LoggStore:
 				//for adding log into db.
-				//fmt.Println(">>", SM.Id)
 				msg := incm.(sm.LoggStore)
-				storeData(msg.Data, myConf)
+				//fmt.Println("---->>>", msg)
+				storeData(msg.Data, myConf, msg.Index)
 
 			case sm.StateStore:
 			}
@@ -196,9 +207,10 @@ func processOutbox(server cluster.Server, SM *sm.State_Machine, msg sm.Send) {
 }
 
 //Storing log entries in database.
-func storeData(data []sm.MyLogg, myConf *Config) {
+func storeData(data []sm.MyLogg, myConf *Config, ind int) {
+	myConf.Lg.TruncateToEnd(int64(ind))
 	for i := 0; i < len(data); i++ {
-		err := myConf.lg.Append(data[i])
+		err := myConf.Lg.Append(data[i])
 		if err != nil {
 			fmt.Println("error:", err)
 		}
@@ -208,13 +220,15 @@ func storeData(data []sm.MyLogg, myConf *Config) {
 //Configuration of Log and Node.
 func logConfig(myId int, myConf *Config) {
 	var conf MyConfig
-	file, _ := os.Open("config/log_config.json")
+	file, errr := os.Open("config/log_config.json")
+	if errr != nil {
+		fmt.Println("+error:", errr)
+	}
 	decoder := json.NewDecoder(file)
 	err := decoder.Decode(&conf)
 	if err != nil {
-		fmt.Println("error:", err)
+		fmt.Println("-error:", err)
 	}
-
 	foundMyId := false
 	//initializing config structure from jason file.
 	for _, srv := range conf.Details {
@@ -229,15 +243,6 @@ func logConfig(myId int, myConf *Config) {
 	if !foundMyId {
 		fmt.Println("Expected this server's Id (\"%d\") to be present in the configuration", myId)
 	}
-}
-
-func (myRaft Raft) startNode(myConf *Config, server cluster.Server, SM *sm.State_Machine) {
-	//Start backaground process to listen incomming packets from other servers.
-	go processInbox(server, SM)
-	//Start StateMachine in follower state.
-	go SM.FollSys()
-	//Raft node Processing.
-	processEvents(server, SM, myConf)
 }
 
 func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
@@ -256,6 +261,7 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	SM.CommMedium.NetCh = make(chan interface{})
 	SM.CommMedium.TimeoutCh = make(chan interface{})
 	SM.CommMedium.ActionCh = make(chan interface{})
+	SM.CommMedium.ShutdownCh = make(chan interface{}, TESTENTRIES)
 	SM.CommMedium.CommitCh = make(chan interface{}, TESTENTRIES)
 
 	//Seed randon number generator.
@@ -266,7 +272,7 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	//Initialize the Log and Node configuration.
 	logConfig(Id, myConf)
 	var err error
-	myConf.lg, err = log.Open(myConf.LogDir)
+	myConf.Lg, err = log.Open(myConf.LogDir)
 	if err != nil {
 		panic(err)
 	}
@@ -294,22 +300,36 @@ func createNode(Id int, myConf *Config, SM *sm.State_Machine) cluster.Server {
 	return server
 }
 
-/***************---------------------NORMAL SERVER CODE USING PORTS WORKING---------------------**************
-func main() {
-	myRaft := new(Raft)
+func startNode(myConf *Config, server cluster.Server, SM *sm.State_Machine) {
+	//Start backaground process to listen incomming packets from other servers.
+	go processInbox(server, SM)
+	//Start StateMachine in follower state.
+	go SM.FollSys()
+	//Raft node Processing.
+	processEvents(server, SM, myConf)
+}
+
+func StartRaft(myId int) *RaftMachine {
 	myNode := new(RaftMachine)
-	SM := new(State_Machine)
+	SM := new(sm.State_Machine)
 	myConf := new(Config)
-	flag.Parse()
-	//Get Server Id from command line.
-	myId, _ := strconv.Atoi(flag.Args()[0])
 	//Start Node.
 	server := createNode(myId, myConf, SM)
 	SM.Id = int32(myId)
-	myNode.Node = server
 	myNode.SM = SM
 	myNode.Conf = myConf
-	myRaft.Cluster = append(myRaft.Cluster, myNode)
-	myRaft.startNode(myRaft.Cluster[0].Conf, myRaft.Cluster[0].Node, myRaft.Cluster[0].SM)
+	myNode.Node = server
+	myNode.CommitInfoCh = make(chan interface{})
+	go startNode(myConf, server, SM)
+	//fmt.Println(myNode.Conf.Lg)
+	return myNode
+}
+
+/***************---------------------NORMAL SERVER CODE USING PORTS WORKING---------------------**************
+func main() {
+	flag.Parse()
+	//Get Server Id from command line.
+	myId, _ := strconv.Atoi(flag.Args()[0])
+	startRaft(myId)
 }
 ***************------------------------------------------------------------------------------***************/

@@ -2,12 +2,32 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
+	"flag"
 	"fmt"
-	"github.com/cs733-iitb/cs733/assignment1/fs"
 	"net"
 	"os"
 	"strconv"
+
+	"github.com/saurabhjambhule/cs733/assignment4/fs"
+	"github.com/saurabhjambhule/cs733/assignment4/raft"
+	"github.com/saurabhjambhule/cs733/assignment4/raft/sm"
 )
+
+const (
+	SIZE = 5
+)
+
+//Contains client handler config dada.
+type Handler struct {
+	Id      int    //this node's Id. One of the cluster's entries should match
+	Address string //address for the client handler
+}
+
+//Contains client handler of all nodes in cluster.
+type MyHandler struct {
+	Servers []Handler
+}
 
 var crlf = []byte{'\r', '\n'}
 
@@ -56,7 +76,7 @@ func reply(conn *net.TCPConn, msg *fs.Msg) bool {
 	return err == nil
 }
 
-func serve(conn *net.TCPConn) {
+func serve(conn *net.TCPConn, SM *sm.State_Machine) {
 	reader := bufio.NewReader(conn)
 	for {
 		msg, msgerr, fatalerr := fs.GetMsg(reader)
@@ -72,6 +92,20 @@ func serve(conn *net.TCPConn) {
 				break
 			}
 		}
+		//fmt.Println("***", string(msg.Kind))
+		if string(msg.Kind) != "r" {
+			//fmt.Println(msg)
+			msgByt, _ := json.Marshal(msg)
+			msgToLog := sm.Append{Data: []byte(msgByt)}
+			//fmt.Println("???>>", msgToLog)
+
+			SM.CommMedium.ClientCh <- msgToLog
+			commData := <-SM.CommMedium.CommitCh
+			data := (commData).(sm.Commit)
+			//data := (data.Data).(sm.MyLogg)
+			//fmt.Println("???", data)
+			_ = data
+		}
 
 		response := fs.ProcessMsg(msg)
 		if !reply(conn, response) {
@@ -81,19 +115,52 @@ func serve(conn *net.TCPConn) {
 	}
 }
 
-func serverMain() {
-	tcpaddr, err := net.ResolveTCPAddr("tcp", "localhost:8080")
+//Client handler cnfiguration.
+func handlerConfig(myId int) Handler {
+	var handl MyHandler
+	var cliHandl Handler
+	file, _ := os.Open("config/handler_config.json")
+	decoder := json.NewDecoder(file)
+	err := decoder.Decode(&handl)
+	if err != nil {
+		fmt.Println("--error:", err)
+	}
+	foundMyId := false
+	//initializing config structure from jason file.
+	for _, srv := range handl.Servers {
+		if srv.Id == myId {
+			foundMyId = true
+			cliHandl.Id = myId
+			cliHandl.Address = srv.Address
+		}
+	}
+	if !foundMyId {
+		fmt.Println("--Expected this server's Id (\"%d\") to be present in the configuration", myId)
+	}
+	return cliHandl
+}
+
+func serverMain(myId int) (Handler, *raft.RaftMachine) {
+	cliHandl := handlerConfig(myId)
+	node := raft.StartRaft(myId)
+	tcpaddr, err := net.ResolveTCPAddr("tcp", cliHandl.Address)
 	check(err)
 	tcp_acceptor, err := net.ListenTCP("tcp", tcpaddr)
 	check(err)
 
-	for {
-		tcp_conn, err := tcp_acceptor.AcceptTCP()
-		check(err)
-		go serve(tcp_conn)
-	}
+	go func(SM *sm.State_Machine) {
+		for {
+			tcp_conn, err := tcp_acceptor.AcceptTCP()
+			check(err)
+			go serve(tcp_conn, SM)
+		}
+	}(node.SM)
+
+	return cliHandl, node
 }
 
 func main() {
-	serverMain()
+	flag.Parse()
+	myid, _ := strconv.Atoi(flag.Args()[0])
+	serverMain(myid)
 }
