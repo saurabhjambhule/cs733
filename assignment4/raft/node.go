@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/cs733-iitb/cluster"
@@ -53,6 +54,7 @@ type RaftMachine struct {
 	SM           *sm.State_Machine
 	Conf         *Config
 	CommitInfoCh chan interface{}
+	sync.Mutex
 }
 
 //Contains data of entire cluster.
@@ -262,7 +264,7 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	SM.CommMedium.TimeoutCh = make(chan interface{})
 	SM.CommMedium.ActionCh = make(chan interface{})
 	SM.CommMedium.ShutdownCh = make(chan interface{}, TESTENTRIES)
-	SM.CommMedium.CommitCh = make(chan interface{}, TESTENTRIES)
+	SM.CommMedium.CommitCh = make(chan interface{}, 5000)
 
 	//Seed randon number generator.
 	rand.Seed(time.Now().UTC().UnixNano() * int64(Id))

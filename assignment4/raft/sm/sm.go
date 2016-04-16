@@ -33,6 +33,7 @@ type Persi_State struct {
 type Volat_State struct {
 	CommitIndex int32
 	LastApplied int32
+	sync.Mutex
 }
 
 //Contains volatile state of the leader.
@@ -61,7 +62,6 @@ type State_Machine struct {
 	Volat_LState
 	Logg Logg
 	CommMedium
-	wg sync.WaitGroup
 }
 
 type CommMedium struct {
@@ -164,8 +164,10 @@ func (sm *State_Machine) FollSys() {
 	} else {
 		sm.VotedFor = 0 //Reinitialize VoteFor
 	}
+	sm.Lock()
 	sm.Status = FOLL //Change state Status to Follower
-	sm.VotedFor = 0  //Reinitialize VoteFor
+	sm.Unlock()
+	sm.VotedFor = 0 //Reinitialize VoteFor
 	sm.LeaderId = 0
 	sm.VoteGrant[0] = 0 //This is positive VoteGrant counter initialized to 1 i.e. self vote
 	sm.VoteGrant[1] = 0 //This is negative VoteGrant counter initialized to 0
@@ -565,7 +567,7 @@ func (sm *State_Machine) commitLogg() {
 		}
 		if count >= MAX {
 			sm.CommitIndex = i
-			//fmt.Println(">>", sm.Id, "-", sm.CommitIndex, "...", sm.Logg.Logg[sm.CommitIndex].Logg)
+			//	fmt.Println(">>", sm.Id, "-", sm.CommitIndex, "...", sm.Logg.Logg[sm.CommitIndex].Logg)
 			sm.CommMedium.CommitCh <- Commit{Data: []byte(sm.Logg.Logg[sm.CommitIndex].Logg), Err: nil, Index: sm.CommitIndex}
 			break
 		}

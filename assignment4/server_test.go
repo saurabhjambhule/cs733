@@ -40,6 +40,10 @@ type Client struct {
 var errNoConn = errors.New("Connection is closed")
 var handlr MyHandler
 var node raft.Raft
+var leaderId int
+
+//var mutex = &sync.Mutex{}
+//var wg sync.WaitGroup
 
 func TestStartCluster(t *testing.T) {
 	cleanDB()
@@ -50,14 +54,15 @@ func TestStartCluster(t *testing.T) {
 	}
 	time.Sleep(1 * time.Second)
 	//fmt.Println(node.Cluster[0].Conf.Lg)
-	fmt.Println(CurrLeader(node.Cluster))
-	for i := 0; i < 5; i++ {
-		fmt.Println(">>>>>>>", node.Cluster[i].SM.Status)
-	}
+	//mutex.Lock()
+	leaderId = CurrLeader(node.Cluster)
+	//fmt.Println(leaderId)
+	//mutex.Unlock()
 }
 
 func TestRPC_BasicSequential(t *testing.T) {
-	cl := mkClient(t, CurrLeader(node.Cluster))
+	leaderId = CurrLeader(node.Cluster)
+	cl := mkClient(t, leaderId)
 	defer cl.close()
 	//fmt.Println("...")
 	// Read non-existent file cs733net
@@ -107,7 +112,9 @@ func TestRPC_BasicSequential(t *testing.T) {
 }
 
 func TestRPC_Binary(t *testing.T) {
-	cl := mkClient(t, CurrLeader(node.Cluster))
+	//leaderId = CurrLeader(node.Cluster)
+
+	cl := mkClient(t, leaderId)
 	defer cl.close()
 
 	// Write binary contents
@@ -122,8 +129,10 @@ func TestRPC_Binary(t *testing.T) {
 }
 
 func TestRPC_Chunks(t *testing.T) {
+	//leaderId = CurrLeader(node.Cluster)
+
 	// Should be able to accept a few bytes at a time
-	cl := mkClient(t, CurrLeader(node.Cluster))
+	cl := mkClient(t, leaderId)
 	defer cl.close()
 	var err error
 	snd := func(chunk string) {
@@ -149,8 +158,10 @@ func TestRPC_Chunks(t *testing.T) {
 }
 
 func TestRPC_Batch(t *testing.T) {
+	//leaderId = CurrLeader(node.Cluster)
+
 	// Send multiple commands in one batch, expect multiple responses
-	cl := mkClient(t, CurrLeader(node.Cluster))
+	cl := mkClient(t, leaderId)
 	defer cl.close()
 	cmds := "write batch1 3\r\nabc\r\n" +
 		"write batch2 4\r\ndefg\r\n" +
@@ -166,7 +177,9 @@ func TestRPC_Batch(t *testing.T) {
 }
 
 func TestRPC_BasicTimer(t *testing.T) {
-	cl := mkClient(t, CurrLeader(node.Cluster))
+	//leaderId = CurrLeader(node.Cluster)
+
+	cl := mkClient(t, leaderId)
 	defer cl.close()
 
 	// Write file cs733, with expiry time of 2 seconds
@@ -225,11 +238,14 @@ func TestRPC_BasicTimer(t *testing.T) {
 // any one clients' last write
 
 func TestRPC_ConcurrentWrites(t *testing.T) {
+	//leaderId = CurrLeader(node.Cluster)
+
+	fmt.Println("--------")
 	nclients := 500
 	niters := 10
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
-		cl := mkClient(t, CurrLeader(node.Cluster))
+		cl := mkClient(t, leaderId)
 		if cl == nil {
 			t.Fatalf("Unable to create client #%d", i)
 		}
@@ -277,8 +293,6 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
 	}
 }
-
-/*
 
 // nclients cas to the same file. At the end the file should be any one clients' last write.
 // The only difference between this test and the ConcurrentWrite test above is that each
@@ -349,7 +363,6 @@ func TestRPC_ConcurrentCas(t *testing.T) {
 	}
 }
 
-*/
 /*--------------------------------|Utility functions|--------------------------------------*/
 
 func (cl *Client) read(filename string) (*Msg, error) {

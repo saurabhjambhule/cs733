@@ -92,20 +92,24 @@ func serve(conn *net.TCPConn, SM *sm.State_Machine) {
 				break
 			}
 		}
-		//fmt.Println("***", string(msg.Kind))
+
 		if string(msg.Kind) != "r" {
-			//fmt.Println(msg)
 			msgByt, _ := json.Marshal(msg)
 			msgToLog := sm.Append{Data: []byte(msgByt)}
-			//fmt.Println("???>>", msgToLog)
-
 			SM.CommMedium.ClientCh <- msgToLog
 			commData := <-SM.CommMedium.CommitCh
 			data := (commData).(sm.Commit)
-			//data := (data.Data).(sm.MyLogg)
-			//fmt.Println("???", data)
-			_ = data
+			if data.Err != nil {
+				reply(conn, &fs.Msg{Kind: 'M'})
+				conn.Close()
+				break
+			}
+			data1 := data.Data
+			//fmt.Println("<---", bytes.Compare([]byte(msgByt), data1))
+			json.Unmarshal(data1, &msg)
+			//fmt.Println("<---", msg)
 		}
+		//fmt.Println("<<<", data)
 
 		response := fs.ProcessMsg(msg)
 		if !reply(conn, response) {
