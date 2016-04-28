@@ -1,8 +1,0 @@
-{"Details":[
-	{"Id": 1, "LogDir": "log/Log_1", "ElectionTimeout": 1, "HeartbeatTimeout": 75},
-	{"Id": 2, "LogDir": "log/Log_2", "ElectionTimeout": 180, "HeartbeatTimeout": 75},
-	{"Id": 3, "LogDir": "log/Log_3", "ElectionTimeout": 210, "HeartbeatTimeout": 75},
-	{"Id": 4, "LogDir": "log/Log_4", "ElectionTimeout": 270, "HeartbeatTimeout": 75},
-	{"Id": 5, "LogDir": "log/Log_5", "ElectionTimeout": 300, "HeartbeatTimeout": 75}
-	]
-}

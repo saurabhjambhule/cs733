@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/saurabhjambhule/cs733/assignment4/fs"
 	"github.com/saurabhjambhule/cs733/assignment4/raft"
@@ -17,6 +18,8 @@ import (
 const (
 	SIZE = 5
 )
+
+var mutex sync.Mutex
 
 //Contains client handler config dada.
 type Handler struct {
@@ -96,8 +99,10 @@ func serve(conn *net.TCPConn, SM *sm.State_Machine) {
 		if string(msg.Kind) != "r" {
 			msgByt, _ := json.Marshal(msg)
 			msgToLog := sm.Append{Data: []byte(msgByt)}
+			//mutex.Lock()
 			SM.CommMedium.ClientCh <- msgToLog
 			commData := <-SM.CommMedium.CommitCh
+			//mutex.Unlock()
 			data := (commData).(sm.Commit)
 			if data.Err != nil {
 				reply(conn, &fs.Msg{Kind: 'M'})

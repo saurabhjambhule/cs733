@@ -41,6 +41,7 @@ type Config struct {
 	HeartbeatTimeout int
 	DoTO             *time.Timer //timeout the state after DoTO
 	Lg               *log.Log
+	sync.Mutex
 }
 
 //Contains all raft node's data of entire cluster.
@@ -124,11 +125,13 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 
 			case sm.Alarm:
 				//Reset the timer of timeout.
+				//myConf.Lock()
 				myConf.DoTO.Stop()
 				al := incm.(sm.Alarm)
 				if al.T == LTO {
 					myConf.DoTO = time.AfterFunc(time.Duration(LTIME)*time.Millisecond, func() {
 						myConf.DoTO.Stop()
+						//myConf.Unlock()
 						SM.CommMedium.TimeoutCh <- nil
 					})
 				}
@@ -136,6 +139,8 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 					myConf.ElectionTimeout = (CTIME + rand.Intn(RANGE))
 					myConf.DoTO = time.AfterFunc(time.Duration(myConf.ElectionTimeout)*time.Millisecond, func() {
 						myConf.DoTO.Stop()
+						//myConf.Unlock()
+
 						SM.CommMedium.TimeoutCh <- nil
 					})
 				}
@@ -143,6 +148,7 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 					myConf.ElectionTimeout = (FTIME + rand.Intn(RANGE))
 					myConf.DoTO = time.AfterFunc(time.Duration(myConf.ElectionTimeout)*time.Millisecond, func() {
 						myConf.DoTO.Stop()
+						//myConf.Unlock()
 						SM.CommMedium.TimeoutCh <- nil
 					})
 				}
@@ -259,12 +265,12 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	gob.Register(sm.MyLogg{})
 
 	//Channel initialization.
-	SM.CommMedium.ClientCh = make(chan interface{})
-	SM.CommMedium.NetCh = make(chan interface{})
-	SM.CommMedium.TimeoutCh = make(chan interface{})
-	SM.CommMedium.ActionCh = make(chan interface{})
-	SM.CommMedium.ShutdownCh = make(chan interface{}, TESTENTRIES)
-	SM.CommMedium.CommitCh = make(chan interface{}, 5000)
+	SM.CommMedium.ClientCh = make(chan interface{}, 10000)
+	SM.CommMedium.NetCh = make(chan interface{}, 10000)
+	SM.CommMedium.TimeoutCh = make(chan interface{}, 10000)
+	SM.CommMedium.ActionCh = make(chan interface{}, 10000)
+	SM.CommMedium.ShutdownCh = make(chan interface{}, 10000)
+	SM.CommMedium.CommitCh = make(chan interface{}, 10000)
 
 	//Seed randon number generator.
 	rand.Seed(time.Now().UTC().UnixNano() * int64(Id))

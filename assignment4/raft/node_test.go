@@ -41,14 +41,13 @@ func TestBasic(t *testing.T) {
 			ci := <-myRaft.Cluster[i].SM.CommMedium.CommitCh
 			tmp := ci.(sm.CommitInfo)
 			expect(t, tmp, str, myRaft.Cluster[i].SM.Id)
-		}
+		}-
 
 	}*/
 
-	fmt.Println("Partition-", leaderId)
-
 	//Creating partion.
 	L := myRaft.GetLeader()
+
 	//fmt.Println("\n\n\nLeader-", L)
 	switch L {
 	case 0, 1:
@@ -56,21 +55,22 @@ func TestBasic(t *testing.T) {
 		partCl2 = append(partCl2, 3, 4, 5)
 		cluster.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
-		leaderId = myRaft.GetMockLeader(partCl2)
+		//leaderId = myRaft.GetMockLeader(partCl2)
 	case 2, 3:
 		partCl1 = append(partCl1, 3, 4)
 		partCl2 = append(partCl2, 1, 2, 5)
 		cluster.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
-		leaderId = myRaft.GetMockLeader(partCl2)
+		//leaderId = myRaft.GetMockLeader(partCl2)
 	case 4:
 		partCl1 = append(partCl1, 4, 5)
 		partCl2 = append(partCl2, 1, 2, 3)
 		cluster.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
-		leaderId = myRaft.GetMockLeader(partCl2)
+		//leaderId = myRaft.GetMockLeader(partCl2)
 	}
 
+	fmt.Println("Partition_1-", L)
 	//Appending Entries And check for replication of entry.
 	for j := 6; j <= 10; j++ {
 		str := "test - " + strconv.Itoa(j)
@@ -87,13 +87,11 @@ func TestBasic(t *testing.T) {
 		}
 	}*/
 
-	fmt.Println("Healing-", leaderId)
-
 	//Merging the cluster back.
 	cluster.Heal()
 	time.Sleep(1 * time.Second)
 	leaderId = myRaft.GetLeader()
-	fmt.Println("Leader-", leaderId)
+	fmt.Println("Healing_1-", leaderId)
 	//Appending Entries And check for replication of entry.
 	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")
 
@@ -115,11 +113,8 @@ func TestBasic(t *testing.T) {
 
 	//printDB(myRaft, 15)
 
-	fmt.Println("Partition--", leaderId)
-
 	//Creating partion.
 	L = myRaft.GetLeader()
-	fmt.Println("Leader-", L)
 	switch L {
 	case 0, 1:
 		cluster.Partition(partCl1, partCl2)
@@ -134,6 +129,9 @@ func TestBasic(t *testing.T) {
 		//time.Sleep(1 * time.Second)
 		leaderId = myRaft.GetMockLeader(partCl2)
 	}
+
+	fmt.Println("Partition_2-", leaderId)
+
 	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")
 
 	//Appending Entries And check for replication of entry.
@@ -155,13 +153,11 @@ func TestBasic(t *testing.T) {
 	//	fmt.Println(myRaft.Cluster[i].SM.Id, ")", myRaft.Cluster[i].SM.Logg)
 	//}
 
-	fmt.Println("Healing-", leaderId)
-
 	//Merging the cluster back.
 	cluster.Heal()
 	time.Sleep(1 * time.Second)
 	leaderId = myRaft.GetLeader()
-	fmt.Println("Leader-", leaderId)
+	fmt.Println("Healing_2-", leaderId)
 
 	//	for i := 0; i < 5; i++ {
 	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")

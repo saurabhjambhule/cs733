@@ -41,6 +41,7 @@ var errNoConn = errors.New("Connection is closed")
 var handlr MyHandler
 var node raft.Raft
 var leaderId int
+var totEntr int
 
 //var mutex = &sync.Mutex{}
 //var wg sync.WaitGroup
@@ -52,7 +53,7 @@ func TestStartCluster(t *testing.T) {
 		handlr.Servers = append(handlr.Servers, tempH)
 		node.Cluster = append(node.Cluster, tempR)
 	}
-	time.Sleep(1 * time.Second)
+	//time.Sleep(2 * time.Second)
 	//fmt.Println(node.Cluster[0].Conf.Lg)
 	//mutex.Lock()
 	leaderId = CurrLeader(node.Cluster)
@@ -61,6 +62,8 @@ func TestStartCluster(t *testing.T) {
 }
 
 func TestRPC_BasicSequential(t *testing.T) {
+	fmt.Println("--------")
+
 	leaderId = CurrLeader(node.Cluster)
 	cl := mkClient(t, leaderId)
 	defer cl.close()
@@ -113,6 +116,7 @@ func TestRPC_BasicSequential(t *testing.T) {
 
 func TestRPC_Binary(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
+	fmt.Println("--------")
 
 	cl := mkClient(t, leaderId)
 	defer cl.close()
@@ -130,6 +134,7 @@ func TestRPC_Binary(t *testing.T) {
 
 func TestRPC_Chunks(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
+	fmt.Println("--------")
 
 	// Should be able to accept a few bytes at a time
 	cl := mkClient(t, leaderId)
@@ -159,6 +164,7 @@ func TestRPC_Chunks(t *testing.T) {
 
 func TestRPC_Batch(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
+	fmt.Println("--------")
 
 	// Send multiple commands in one batch, expect multiple responses
 	cl := mkClient(t, leaderId)
@@ -178,6 +184,7 @@ func TestRPC_Batch(t *testing.T) {
 
 func TestRPC_BasicTimer(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
+	fmt.Println("--------")
 
 	cl := mkClient(t, leaderId)
 	defer cl.close()
@@ -241,7 +248,7 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
 
 	fmt.Println("--------")
-	nclients := 500
+	nclients := 50
 	niters := 10
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
@@ -286,20 +293,43 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	//time.Sleep(3000 * time.Millisecond)
 	m, _ := clients[0].read("concWrite")
+	fmt.Println(string(m.Kind), "-", string(m.Contents))
 	// Ensure the contents are of the form "cl <i> 9"
 	// The last write of any client ends with " 9"
-	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 9")) {
+	totEntr += niters * nclients
+	chk := 0
+	for {
+		fmt.Print("")
+		for i := 0; i < PEER; i++ {
+
+			if node.Cluster[i].SM.CommitIndex >= int32(totEntr) {
+				fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+				chk++
+			}
+		}
+		if chk >= 5 {
+			time.Sleep(1 * time.Second) // give goroutines a chance
+			break
+		}
+	}
+
+	str := " " + strconv.Itoa(niters-1)
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), str)) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
 	}
 }
 
+/*
 // nclients cas to the same file. At the end the file should be any one clients' last write.
 // The only difference between this test and the ConcurrentWrite test above is that each
 // client loops around until each CAS succeeds. The number of concurrent clients has been
 // reduced to keep the testing time within limits.
 func TestRPC_ConcurrentCas(t *testing.T) {
-	nclients := 100
+	fmt.Println("--------")
+
+	nclients := 50
 	niters := 10
 
 	clients := make([]*Client, nclients)
@@ -331,6 +361,7 @@ func TestRPC_ConcurrentCas(t *testing.T) {
 			sem.Wait()
 			defer wg.Done()
 			for j := 0; j < niters; j++ {
+				//fmt.Println(i, ":", j)
 				str := fmt.Sprintf("cl %d %d", i, j)
 				for {
 					m, err := cl.cas("concCas", ver, str, 0)
@@ -349,20 +380,38 @@ func TestRPC_ConcurrentCas(t *testing.T) {
 		}(i, ver, clients[i])
 	}
 
-	time.Sleep(100 * time.Millisecond) // give goroutines a chance
-	sem.Done()                         // Start goroutines
-	wg.Wait()                          // Wait for them to finish
+	time.Sleep(1000 * time.Millisecond) // give goroutines a chance
+	sem.Done()                          // Start goroutines
+	wg.Wait()                           // Wait for them to finish
+
 	select {
 	case e := <-errorCh:
 		t.Fatalf("Error received while doing cas: %v", e)
 	default: // no errors
 	}
+
+	totEntr += niters * nclients
+	chk := 0
+	for {
+		fmt.Print("")
+		for i := 0; i < PEER; i++ {
+
+			if node.Cluster[i].SM.CommitIndex >= int32(totEntr) {
+				fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+				chk++
+			}
+		}
+		if chk >= 5 {
+			break
+		}
+	}
 	m, _ = clients[0].read("concCas")
-	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 9")) {
+	str := " " + strconv.Itoa(niters-1)
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), str)) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg.Kind = %d, msg.Contents=%s", m.Kind, m.Contents)
 	}
 }
-
+*/
 /*--------------------------------|Utility functions|--------------------------------------*/
 
 func (cl *Client) read(filename string) (*Msg, error) {
