@@ -23,13 +23,15 @@ var mutex sync.Mutex
 
 //Contains client handler config dada.
 type Handler struct {
-	Id      int    //this node's Id. One of the cluster's entries should match
-	Address string //address for the client handler
+	Id        int    //this node's Id. One of the cluster's entries should match
+	Address   string //address for the client handler
+	ClientMap map[string]*net.TCPConn
+	sync.RWMutex
 }
 
 //Contains client handler of all nodes in cluster.
 type MyHandler struct {
-	Servers []Handler
+	Servers []*Handler
 }
 
 var crlf = []byte{'\r', '\n'}
@@ -79,63 +81,118 @@ func reply(conn *net.TCPConn, msg *fs.Msg) bool {
 	return err == nil
 }
 
-func serve(conn *net.TCPConn, SM *sm.State_Machine) {
+func serve(clientId string, myNode *raft.RaftMachine, clHandl *Handler) {
+	clHandl.RLock()
+	conn := clHandl.ClientMap[clientId]
+	clHandl.RUnlock()
+	//fmt.Println("***", conn)
 	reader := bufio.NewReader(conn)
 	for {
 		msg, msgerr, fatalerr := fs.GetMsg(reader)
 		if fatalerr != nil || msgerr != nil {
 			reply(conn, &fs.Msg{Kind: 'M'})
 			conn.Close()
+			clHandl.Lock()
+			delete(clHandl.ClientMap, clientId)
+			clHandl.Unlock()
 			break
 		}
 
 		if msgerr != nil {
 			if (!reply(conn, &fs.Msg{Kind: 'M'})) {
 				conn.Close()
+				clHandl.Lock()
+				delete(clHandl.ClientMap, clientId)
+				clHandl.Unlock()
 				break
 			}
 		}
+		//fmt.Println("---:", msg)
 
 		if string(msg.Kind) != "r" {
+			//fmt.Println(msg)
 			msgByt, _ := json.Marshal(msg)
-			msgToLog := sm.Append{Data: []byte(msgByt)}
-			//mutex.Lock()
-			SM.CommMedium.ClientCh <- msgToLog
-			commData := <-SM.CommMedium.CommitCh
-			//mutex.Unlock()
-			data := (commData).(sm.Commit)
-			if data.Err != nil {
-				reply(conn, &fs.Msg{Kind: 'M'})
+			raft.ClientAppend(myNode, clientId, msgByt)
+			//fmt.Println("---->")
+		} else {
+			response := fs.ProcessMsg(msg)
+			if !reply(conn, response) {
 				conn.Close()
+				clHandl.Lock()
+				delete(clHandl.ClientMap, clientId)
+				clHandl.Unlock()
 				break
 			}
-			data1 := data.Data
-			//fmt.Println("<---", bytes.Compare([]byte(msgByt), data1))
-			json.Unmarshal(data1, &msg)
-			//fmt.Println("<---", msg)
 		}
-		//fmt.Println("<<<", data)
+	}
+}
 
-		response := fs.ProcessMsg(msg)
-		if !reply(conn, response) {
-			conn.Close()
-			break
+func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
+	var msg *fs.Msg
+	for {
+		select {
+		case commData := <-myNode.SM.CommMedium.CommitCh:
+			cmData := (commData).(sm.Commit)
+			//fmt.Println("@@@", clHandl.ClientMap)
+
+			clHandl.RLock()
+			conn := clHandl.ClientMap[cmData.Data.Id]
+			clHandl.RUnlock()
+			//fmt.Println("@@@", cmData.Data.Id)
+			//fmt.Println("@@@>", cmData)
+
+			if cmData.Err != nil {
+				//	fmt.Println("---:>")
+				reply(conn, &fs.Msg{Kind: 'M'})
+				conn.Close()
+				clHandl.Lock()
+				delete(clHandl.ClientMap, cmData.Data.Id)
+				clHandl.Unlock()
+				break
+			}
+			data := []byte(cmData.Data.Logg)
+			//fmt.Println("<---", bytes.Compare([]byte(msgByt), data1))
+			json.Unmarshal(data, &msg)
+			//fmt.Println("---:::>", msg)
+			//fmt.Println("<---", msg)
+			response := fs.ProcessMsg(msg)
+			//fmt.Println("<:::---", response)
+
+			if !reply(conn, response) {
+				conn.Close()
+				clHandl.Lock()
+				delete(clHandl.ClientMap, cmData.Data.Id)
+				clHandl.Unlock()
+				break
+			}
+
+		case commData := <-myNode.SM.CommMedium.CommitInfoCh:
+			cmData := (commData).(sm.Commit)
+			data := []byte(cmData.Data.Logg)
+			json.Unmarshal(data, &msg)
+			response := fs.ProcessMsg(msg)
+			_ = response
 		}
 	}
 }
 
 //Client handler cnfiguration.
-func handlerConfig(myId int) Handler {
+func handlerConfig(myId int) *Handler {
 	var handl MyHandler
-	var cliHandl Handler
+	cliHandl := new(Handler)
 	file, _ := os.Open("config/handler_config.json")
 	decoder := json.NewDecoder(file)
 	err := decoder.Decode(&handl)
 	if err != nil {
 		fmt.Println("--error:", err)
 	}
-	foundMyId := false
+
+	//initializing map for handler.
+	//m.hm = make(map[string]string)
+	cliHandl.ClientMap = make(map[string]*net.TCPConn)
+
 	//initializing config structure from jason file.
+	foundMyId := false
 	for _, srv := range handl.Servers {
 		if srv.Id == myId {
 			foundMyId = true
@@ -149,22 +206,45 @@ func handlerConfig(myId int) Handler {
 	return cliHandl
 }
 
-func serverMain(myId int) (Handler, *raft.RaftMachine) {
+func serverMain(myId int) {
+	cliHandl := handlerConfig(myId)
+	//node := raft.StartRaft(myId)
+	tcpaddr, err := net.ResolveTCPAddr("tcp", cliHandl.Address)
+	check(err)
+	tcp_acceptor, err := net.ListenTCP("tcp", tcpaddr)
+	check(err)
+	for {
+		tcp_conn, err := tcp_acceptor.AcceptTCP()
+		check(err)
+		clientId := fmt.Sprintf("%s", tcp_conn.RemoteAddr())
+		cliHandl.Lock()
+		cliHandl.ClientMap[clientId] = tcp_conn
+		cliHandl.Unlock()
+		//go serve(tcp_conn, node, cliHandl)
+		//go responseReq(node, cliHandl)
+	}
+}
+
+func serverMainTest(myId int) (*Handler, *raft.RaftMachine) {
 	cliHandl := handlerConfig(myId)
 	node := raft.StartRaft(myId)
 	tcpaddr, err := net.ResolveTCPAddr("tcp", cliHandl.Address)
 	check(err)
 	tcp_acceptor, err := net.ListenTCP("tcp", tcpaddr)
 	check(err)
-
-	go func(SM *sm.State_Machine) {
+	go func(node *raft.RaftMachine, cliHandl *Handler) {
 		for {
 			tcp_conn, err := tcp_acceptor.AcceptTCP()
 			check(err)
-			go serve(tcp_conn, SM)
+			clientId := fmt.Sprintf("%s", tcp_conn.RemoteAddr())
+			cliHandl.Lock()
+			cliHandl.ClientMap[clientId] = tcp_conn
+			cliHandl.Unlock()
+			//fmt.Println("conn-", clientId, cliHandl.ClientMap[clientId])
+			go serve(clientId, node, cliHandl)
+			go responseReq(node, cliHandl)
 		}
-	}(node.SM)
-
+	}(node, cliHandl)
 	return cliHandl, node
 }
 

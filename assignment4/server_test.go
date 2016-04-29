@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,10 +40,12 @@ type Client struct {
 }
 
 var errNoConn = errors.New("Connection is closed")
+
 var handlr MyHandler
 var node raft.Raft
 var leaderId int
 var totEntr int
+var cmds []*exec.Cmd
 
 //var mutex = &sync.Mutex{}
 //var wg sync.WaitGroup
@@ -49,22 +53,53 @@ var totEntr int
 func TestStartCluster(t *testing.T) {
 	cleanDB()
 	for i := 1; i <= PEER; i++ {
-		tempH, tempR := serverMain(i)
+		tempH, tempR := serverMainTest(i)
 		handlr.Servers = append(handlr.Servers, tempH)
 		node.Cluster = append(node.Cluster, tempR)
+		//fmt.Println(handlr.Servers[i-1].ClientMap)
 	}
-	//time.Sleep(2 * time.Second)
-	//fmt.Println(node.Cluster[0].Conf.Lg)
-	//mutex.Lock()
-	leaderId = CurrLeader(node.Cluster)
-	//fmt.Println(leaderId)
-	//mutex.Unlock()
+	time.Sleep(2 * time.Second)
+
+	/*
+		cmds = make([]*exec.Cmd, 6)
+		cmds[0] = exec.Command("go build *.go")
+		for i := 1; i <= 5; i++ {
+			cmds[i] = exec.Command("./server", strconv.Itoa(i))
+			err := cmds[i].Start()
+			if err != nil {
+				panic(err)
+			}
+		}
+	*/
+}
+
+func TestLeaderElection(t *testing.T) {
+	leaderId = -1
+	flag := false
+	time.Sleep(2 * time.Second)
+	for {
+		for i := 0; i < 5; i++ {
+			cl := mkClient(t, i)
+			defer cl.close()
+			data := "Get Leader"
+			m, _ := cl.write("leader", data, 0)
+			if m.Kind == 'O' {
+				leaderId = i
+				flag = true
+				break
+			}
+		}
+		if flag {
+			break
+		}
+	}
+
+	fmt.Println("Leader:", leaderId)
 }
 
 func TestRPC_BasicSequential(t *testing.T) {
-	fmt.Println("--------")
 
-	leaderId = CurrLeader(node.Cluster)
+	//leaderId = CurrLeader(node.Cluster)
 	cl := mkClient(t, leaderId)
 	defer cl.close()
 	//fmt.Println("...")
@@ -116,7 +151,6 @@ func TestRPC_BasicSequential(t *testing.T) {
 
 func TestRPC_Binary(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
-	fmt.Println("--------")
 
 	cl := mkClient(t, leaderId)
 	defer cl.close()
@@ -134,7 +168,6 @@ func TestRPC_Binary(t *testing.T) {
 
 func TestRPC_Chunks(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
-	fmt.Println("--------")
 
 	// Should be able to accept a few bytes at a time
 	cl := mkClient(t, leaderId)
@@ -163,28 +196,28 @@ func TestRPC_Chunks(t *testing.T) {
 }
 
 func TestRPC_Batch(t *testing.T) {
-	//leaderId = CurrLeader(node.Cluster)
-	fmt.Println("--------")
+	//fmt.Println("--------")
 
 	// Send multiple commands in one batch, expect multiple responses
 	cl := mkClient(t, leaderId)
 	defer cl.close()
 	cmds := "write batch1 3\r\nabc\r\n" +
-		"write batch2 4\r\ndefg\r\n" +
-		"read batch1\r\n"
+		"write batch2 4\r\ndefg\r\n"
+	//+ "read batch1\r\n"
 
 	cl.send(cmds)
 	m, err := cl.rcv()
+
 	expect(t, m, &Msg{Kind: 'O'}, "write batch1 success", err)
 	m, err = cl.rcv()
+
 	expect(t, m, &Msg{Kind: 'O'}, "write batch2 success", err)
-	m, err = cl.rcv()
-	expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
+	//m, err = cl.rcv()
+	//expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
 }
 
 func TestRPC_BasicTimer(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
-	fmt.Println("--------")
 
 	cl := mkClient(t, leaderId)
 	defer cl.close()
@@ -247,8 +280,7 @@ func TestRPC_BasicTimer(t *testing.T) {
 func TestRPC_ConcurrentWrites(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
 
-	fmt.Println("--------")
-	nclients := 50
+	nclients := 100
 	niters := 10
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
@@ -299,42 +331,24 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 	// Ensure the contents are of the form "cl <i> 9"
 	// The last write of any client ends with " 9"
 	totEntr += niters * nclients
-	chk := 0
-	for {
-		fmt.Print("")
-		for i := 0; i < PEER; i++ {
-
-			if node.Cluster[i].SM.CommitIndex >= int32(totEntr) {
-				fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-				chk++
-			}
-		}
-		if chk >= 5 {
-			time.Sleep(1 * time.Second) // give goroutines a chance
-			break
-		}
-	}
-
 	str := " " + strconv.Itoa(niters-1)
 	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), str)) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
 	}
 }
 
-/*
 // nclients cas to the same file. At the end the file should be any one clients' last write.
 // The only difference between this test and the ConcurrentWrite test above is that each
 // client loops around until each CAS succeeds. The number of concurrent clients has been
 // reduced to keep the testing time within limits.
 func TestRPC_ConcurrentCas(t *testing.T) {
-	fmt.Println("--------")
 
 	nclients := 50
 	niters := 10
 
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
-		cl := mkClient(t, CurrLeader(node.Cluster))
+		cl := mkClient(t, leaderId)
 		if cl == nil {
 			t.Fatalf("Unable to create client #%d", i)
 		}
@@ -391,27 +405,13 @@ func TestRPC_ConcurrentCas(t *testing.T) {
 	}
 
 	totEntr += niters * nclients
-	chk := 0
-	for {
-		fmt.Print("")
-		for i := 0; i < PEER; i++ {
-
-			if node.Cluster[i].SM.CommitIndex >= int32(totEntr) {
-				fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-				chk++
-			}
-		}
-		if chk >= 5 {
-			break
-		}
-	}
 	m, _ = clients[0].read("concCas")
 	str := " " + strconv.Itoa(niters-1)
 	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), str)) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg.Kind = %d, msg.Contents=%s", m.Kind, m.Contents)
 	}
 }
-*/
+
 /*--------------------------------|Utility functions|--------------------------------------*/
 
 func (cl *Client) read(filename string) (*Msg, error) {
@@ -616,6 +616,29 @@ func cleanDB() {
 	os.RemoveAll("./log")
 }
 
+func getAddress(myId int) string {
+	var handl MyHandler
+	var port string
+	file, _ := os.Open("config/handler_config.json")
+	decoder := json.NewDecoder(file)
+	err := decoder.Decode(&handl)
+	if err != nil {
+		fmt.Println("--error:", err)
+	}
+	foundMyId := false
+	//initializing config structure from jason file.
+	for _, srv := range handl.Servers {
+		if srv.Id == myId {
+			foundMyId = true
+			port = srv.Address
+		}
+	}
+	if !foundMyId {
+		fmt.Println("--Expected this server's Id (\"%d\") to be present in the configuration", myId)
+	}
+	return port
+}
+
 func mkClient(t *testing.T, id int) *Client {
 	var client *Client
 	raddr, err := net.ResolveTCPAddr("tcp", handlr.Servers[id].Address)
@@ -631,7 +654,25 @@ func mkClient(t *testing.T, id int) *Client {
 	return client
 }
 
+/*
+func mkClient(t *testing.T, id int) *Client {
+	var client *Client
+	raddr, err := net.ResolveTCPAddr("tcp", getAddress(id+1))
+	if err == nil {
+		conn, err := net.DialTCP("tcp", nil, raddr)
+		if err == nil {
+			client = &Client{conn: conn, reader: bufio.NewReader(conn)}
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+*/
+
 func expect(t *testing.T, response *Msg, expected *Msg, errstr string, err error) {
+	//fmt.Println("$$$$$$$$$$")
 	if err != nil {
 		t.Fatal("Unexpected error: " + err.Error())
 	}

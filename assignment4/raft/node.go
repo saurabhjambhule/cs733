@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	FTIME       = 1000 //seconds
-	CTIME       = 1000 //seconds(re-election)
+	FTIME       = 4000 //seconds
+	CTIME       = 4000 //seconds(re-election)
 	LTIME       = 1000 //milliseconds(haertbeat)
 	RANGE       = 1000 //timeout upperlimit in seconds for candIdate and follower
 	TESTENTRIES = 1000
@@ -41,7 +41,8 @@ type Config struct {
 	HeartbeatTimeout int
 	DoTO             *time.Timer //timeout the state after DoTO
 	Lg               *log.Log
-	sync.Mutex
+	TimeLock         sync.RWMutex
+	ProcessLock      sync.RWMutex
 }
 
 //Contains all raft node's data of entire cluster.
@@ -51,17 +52,18 @@ type MyConfig struct {
 
 //Contains server related data.
 type RaftMachine struct {
-	Node         cluster.Server
-	SM           *sm.State_Machine
-	Conf         *Config
+	Node cluster.Server
+	SM   *sm.State_Machine
+	Conf *Config
+	sync.RWMutex
 	CommitInfoCh chan interface{}
-	sync.Mutex
 }
 
 //Contains data of entire cluster.
 //and the channel through which client communicate to raft.
 type Raft struct {
 	Cluster []*RaftMachine
+	sync.RWMutex
 }
 
 type incomming interface {
@@ -79,14 +81,17 @@ func (myRaft Raft) LeaderId() int {
 
 //Blocks until leader electected and return leader Id.
 func (myRaft Raft) GetLeader() int {
+	myRaft.RLock()
 	for {
 		fmt.Print("")
 		for i := 0; i < PEERS; i++ {
 			if myRaft.Cluster[i].SM.Status == LEAD {
+				//getLock.Unlock()
 				return i
 			}
 		}
 	}
+	myRaft.RUnlock()
 	return -1
 }
 
@@ -106,7 +111,15 @@ func (server RaftMachine) Shutdown(cl *mock.MockCluster) {
 	//server.SM.FollSys()
 }
 
-//Client's message to Raft node
+//Client's message to Raft node.
+func ClientAppend(server *RaftMachine, cliId string, cmdReq []byte) {
+	reqApp := sm.Append{Id: cliId, Data: cmdReq}
+	//fmt.Println(">->", reqApp)
+
+	server.SM.CommMedium.ClientCh <- reqApp
+}
+
+//Client's message to Raft node For TESTING
 func (server RaftMachine) Append(cmdReq []byte) {
 	reqApp := sm.Append{Data: cmdReq}
 	server.SM.CommMedium.ClientCh <- reqApp
@@ -125,13 +138,12 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 
 			case sm.Alarm:
 				//Reset the timer of timeout.
-				//myConf.Lock()
+				myConf.TimeLock.Lock()
 				myConf.DoTO.Stop()
 				al := incm.(sm.Alarm)
 				if al.T == LTO {
 					myConf.DoTO = time.AfterFunc(time.Duration(LTIME)*time.Millisecond, func() {
 						myConf.DoTO.Stop()
-						//myConf.Unlock()
 						SM.CommMedium.TimeoutCh <- nil
 					})
 				}
@@ -139,19 +151,20 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 					myConf.ElectionTimeout = (CTIME + rand.Intn(RANGE))
 					myConf.DoTO = time.AfterFunc(time.Duration(myConf.ElectionTimeout)*time.Millisecond, func() {
 						myConf.DoTO.Stop()
-						//myConf.Unlock()
-
 						SM.CommMedium.TimeoutCh <- nil
 					})
 				}
 				if al.T == FTO {
 					myConf.ElectionTimeout = (FTIME + rand.Intn(RANGE))
+					if SM.Id == 1 {
+						myConf.ElectionTimeout = 1000
+					}
 					myConf.DoTO = time.AfterFunc(time.Duration(myConf.ElectionTimeout)*time.Millisecond, func() {
 						myConf.DoTO.Stop()
-						//myConf.Unlock()
 						SM.CommMedium.TimeoutCh <- nil
 					})
 				}
+				myConf.TimeLock.Unlock()
 
 			case sm.Commit:
 
@@ -163,6 +176,10 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 
 			case sm.StateStore:
 			}
+
+			//		case incm := <-SM.CommMedium.RecoveryCh:
+			//			msg := incm.(sm.Send)
+			//			processOutbox(server, SM, msg)
 		}
 	}
 	fmt.Println("Bye", incm)
@@ -172,6 +189,7 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 func processInbox(server cluster.Server, SM *sm.State_Machine) {
 	for {
 		env := <-server.Inbox()
+		//fmt.Printf("\n-%T", env.Msg)
 		switch env.Msg.(type) {
 		case sm.VoteReq:
 			SM.CommMedium.NetCh <- env.Msg
@@ -187,29 +205,29 @@ func processInbox(server cluster.Server, SM *sm.State_Machine) {
 
 //Process to send packets to other Servers.
 func processOutbox(server cluster.Server, SM *sm.State_Machine, msg sm.Send) {
-	//broadcaste messagess.
+	//broadcast messagess.
 	if msg.PeerId == 0 {
 		switch msg.Event.(type) {
 		case sm.AppEntrReq:
 			AppReq := msg.Event.(sm.AppEntrReq)
-			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, MsgId: 11, Msg: AppReq}
+			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msg: AppReq}
 		case sm.VoteReq:
 			VotReq := msg.Event.(sm.VoteReq)
-			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, MsgId: 1, Msg: VotReq}
+			server.Outbox() <- &cluster.Envelope{Pid: cluster.BROADCAST, Msg: VotReq}
 		}
 	} else {
 		//send to particular node.
 		switch msg.Event.(type) {
 		case sm.AppEntrReq:
 			AppReq := msg.Event.(sm.AppEntrReq)
-			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 11, Msg: AppReq}
+			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), Msg: AppReq}
 		case sm.AppEntrResp:
 			AppResp := msg.Event.(sm.AppEntrResp)
 			AppResp.Peer = int32(server.Pid())
-			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 22, Msg: AppResp}
+			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), Msg: AppResp}
 		case sm.VoteResp:
 			VotResp := msg.Event.(sm.VoteResp)
-			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), MsgId: 2, Msg: VotResp}
+			server.Outbox() <- &cluster.Envelope{Pid: int(msg.PeerId), Msg: VotResp}
 		}
 	}
 }
@@ -263,6 +281,8 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	gob.Register(sm.LoggStore{})
 	gob.Register(sm.CommitInfo{})
 	gob.Register(sm.MyLogg{})
+	gob.Register(sm.Commit{})
+	gob.Register(sm.Append{})
 
 	//Channel initialization.
 	SM.CommMedium.ClientCh = make(chan interface{}, 10000)
@@ -270,6 +290,7 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	SM.CommMedium.TimeoutCh = make(chan interface{}, 10000)
 	SM.CommMedium.ActionCh = make(chan interface{}, 10000)
 	SM.CommMedium.ShutdownCh = make(chan interface{}, 10000)
+	SM.CommMedium.CommitInfoCh = make(chan interface{}, 10000)
 	SM.CommMedium.CommitCh = make(chan interface{}, 10000)
 
 	//Seed randon number generator.
@@ -314,13 +335,16 @@ func startNode(myConf *Config, server cluster.Server, SM *sm.State_Machine) {
 	//Start StateMachine in follower state.
 	go SM.FollSys()
 	//Raft node Processing.
+	myConf.ProcessLock.Lock()
 	processEvents(server, SM, myConf)
+	myConf.ProcessLock.Unlock()
 }
 
 func StartRaft(myId int) *RaftMachine {
 	myNode := new(RaftMachine)
 	SM := new(sm.State_Machine)
 	myConf := new(Config)
+
 	//Start Node.
 	server := createNode(myId, myConf, SM)
 	SM.Id = int32(myId)

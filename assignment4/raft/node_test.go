@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 func TestBasic(t *testing.T) {
 	//Initialization.
 	var myRaft Raft
+	myRaft.GetLock = &sync.Mutex{}
+
 	partCl0 := make([]int, 0)
 	partCl1 := make([]int, 0)
 	partCl2 := make([]int, 0)
@@ -25,8 +28,29 @@ func TestBasic(t *testing.T) {
 	cleanDB()                                //Clear the old database.
 	myRaft, cluster = myRaft.makeMockRafts() //make mock cluster
 	//Simple cluster can also be created using myraft.makeRafts() method.
+	time.Sleep(1 * time.Second)
 
 	leaderId := myRaft.GetLeader() //Get current leader.
+	/*leaderId := 1
+	for {
+		myRaft.Cluster[0].Append([]byte(string("getLeader")))
+		ci := <-myRaft.Cluster[0].SM.CommMedium.CommitCh
+		tmp := ci.(sm.Commit)
+		if tmp.Err != nil {
+			time.Sleep(1 * time.Second)
+			leaderId, _ = strconv.Atoi(string(tmp.Data))
+			if leaderId == 0 {
+				leaderId = 1
+			}
+			myRaft.Cluster[leaderId-1].Append([]byte(string("getLeader")))
+			ci := <-myRaft.Cluster[leaderId-1].SM.CommMedium.CommitCh
+			tmp := ci.(sm.Commit)
+			if tmp.Err == nil {
+				break
+			}
+		}
+	}
+	fmt.Println("----->", leaderId)*/
 
 	fmt.Println("Basic Replication-", leaderId)
 	//Appending Entries And check for replication of entry.
@@ -278,8 +302,15 @@ func (myRaft Raft) makeRafts() Raft {
 		myNode := new(RaftMachine)
 		SM := new(sm.State_Machine)
 		myConf := new(Config)
+		myLock := new(Locking)
+
+		myLock.GetLock = &sync.Mutex{}
+		myLock.TimerLock = &sync.Mutex{}
+		myNode.Lock = myLock
+
 		server := createNode(id, myConf, SM)
 		SM.Id = int32(id)
+
 		myNode.Node = server
 		myNode.SM = SM
 		myNode.Conf = myConf
@@ -306,6 +337,9 @@ func (myRaft Raft) makeMockRafts() (Raft, *mock.MockCluster) {
 		//initialize config and server object.
 		server := createMockNode(id, myConf, SM, cl)
 		SM.Id = int32(id)
+
+		//SM.GetTimeLock = myRaft.GetTimeLock
+
 		myNode.Node = server
 		myNode.SM = SM
 		myNode.Conf = myConf
