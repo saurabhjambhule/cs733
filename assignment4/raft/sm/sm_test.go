@@ -20,7 +20,7 @@ type TestCases struct {
 var cnt int
 
 //Initializing Testing.
-func TestCreateRaftSM(t *testing.T) {
+func Test_CreateSM(t *testing.T) {
 	//Initializing Peers.
 	Peer := make(map[int32]int32)
 	Peer[1000] = 0
@@ -29,7 +29,7 @@ func TestCreateRaftSM(t *testing.T) {
 	Peer[3000] = 3
 	Peer[5000] = 4
 	//Initializing state machine as Follower.
-	sm := State_Machine{Persi_State: Persi_State{Id: 1000, Status: FOLL, CurrTerm: 1, LoggInd: 0}, Volat_State: Volat_State{CommitIndex: 0, LastApplied: 0}}
+	sm := State_Machine{Persi_State: Persi_State{CurrTerm: 1, LoggInd: 0}, Volat_State: Volat_State{Id: 1000, Status: FOLL, CommitIndex: 0, LastApplied: 0}}
 	sm.ClientCh = make(chan interface{}, 10)
 	sm.NetCh = make(chan interface{}, 10)
 	sm.TimeoutCh = make(chan interface{}, 10)
@@ -37,19 +37,19 @@ func TestCreateRaftSM(t *testing.T) {
 	//Follower state testing.
 	sm.FollTesting(t)
 	//CandIdate state testing.
-	//sm.CandTesting(t)
+	sm.CandTesting(t)
 	//creating multiple copies of state machime in CandIdate state for testing purpose.
-	//sm1 := sm
-	//sm2 := sm
-	//sm3 := sm
+	sm1 := sm
+	sm2 := sm
+	sm3 := sm
 	//Testing leader with timeout, append and vote requests.
-	//sm.LeadTesting(t)
-	//Testing leader with append entry request.
-	//sm1.LeadTesting1(t)
+	sm.LeadTesting(t)
+	Testing leader with append entry request.
+	sm1.LeadTesting1(t)
 	//Testing leader with append entry response.
-	//sm2.LeadTesting2(t)
+	sm2.LeadTesting2(t)
 	//Testing leader for committing Logg.
-	//sm3.LeadTesting3(t)
+	sm3.LeadTesting3(t)
 }
 
 //Testing various scenarios against Follower state.

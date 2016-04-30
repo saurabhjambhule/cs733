@@ -53,6 +53,7 @@ var cmds []*exec.Cmd
 func Test_StartCluster(t *testing.T) {
 	cleanDB()
 	/*
+		//FOR TESTING MOCK CLUSTER.
 		for i := 1; i <= PEER; i++ {
 			tempH, tempR := serverMainTest(i)
 			handlr.Servers = append(handlr.Servers, tempH)
@@ -63,7 +64,6 @@ func Test_StartCluster(t *testing.T) {
 	*/
 
 	cmds = make([]*exec.Cmd, 6)
-	//cmds[0] = exec.Command("go build *.go")
 	for i := 1; i <= 5; i++ {
 		cmds[i] = exec.Command("./server", strconv.Itoa(i))
 		err := cmds[i].Start()
@@ -73,8 +73,6 @@ func Test_StartCluster(t *testing.T) {
 			panic(err)
 		}
 	}
-
-	//fmt.Println(cmds)
 }
 
 func TestLeaderElection(t *testing.T) {
@@ -99,10 +97,8 @@ func TestLeaderElection(t *testing.T) {
 
 func TestRPC_BasicSequential(t *testing.T) {
 
-	//leaderId = 0
 	cl := mkClient(t, leaderId)
 	defer cl.close()
-	//fmt.Println("...")
 	// Read non-existent file cs733net
 	m, err := cl.read("cs733net")
 	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
@@ -145,13 +141,9 @@ func TestRPC_BasicSequential(t *testing.T) {
 	// Expect to not find the file
 	m, err = cl.read("cs733net")
 	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
-
-	//printDB(node, 5)
 }
 
 func TestRPC_Binary(t *testing.T) {
-	//leaderId = CurrLeader(node.Cluster)
-
 	cl := mkClient(t, leaderId)
 	defer cl.close()
 
@@ -167,8 +159,6 @@ func TestRPC_Binary(t *testing.T) {
 }
 
 func TestRPC_Chunks(t *testing.T) {
-	//leaderId = CurrLeader(node.Cluster)
-
 	// Should be able to accept a few bytes at a time
 	cl := mkClient(t, leaderId)
 	defer cl.close()
@@ -196,14 +186,11 @@ func TestRPC_Chunks(t *testing.T) {
 }
 
 func TestRPC_Batch(t *testing.T) {
-	//fmt.Println("--------")
-
 	// Send multiple commands in one batch, expect multiple responses
 	cl := mkClient(t, leaderId)
 	defer cl.close()
 	cmds := "write batch1 3\r\nabc\r\n" +
 		"write batch2 4\r\ndefg\r\n"
-	//+ "read batch1\r\n"
 
 	cl.send(cmds)
 	m, err := cl.rcv()
@@ -212,13 +199,9 @@ func TestRPC_Batch(t *testing.T) {
 	m, err = cl.rcv()
 
 	expect(t, m, &Msg{Kind: 'O'}, "write batch2 success", err)
-	//m, err = cl.rcv()
-	//expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
 }
 
 func TestRPC_BasicTimer(t *testing.T) {
-	//leaderId = CurrLeader(node.Cluster)
-
 	cl := mkClient(t, leaderId)
 	defer cl.close()
 
@@ -277,8 +260,6 @@ func TestRPC_BasicTimer(t *testing.T) {
 // nclients write to the same file. At the end the file should be
 // any one clients' last write
 func TestRPC_ConcurrentWrites(t *testing.T) {
-	//leaderId = CurrLeader(node.Cluster)
-
 	nclients := 50
 	niters := 10
 	clients := make([]*Client, nclients)
@@ -326,7 +307,6 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 	}
 	time.Sleep(3000 * time.Millisecond)
 	m, _ := clients[0].read("concWrite")
-	//fmt.Println(string(m.Kind), "-", string(m.Contents))
 	// Ensure the contents are of the form "cl <i> 9"
 	// The last write of any client ends with " 9"
 	totEntr += niters * nclients
@@ -341,7 +321,6 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 // client loops around until each CAS succeeds. The number of concurrent clients has been
 // reduced to keep the testing time within limits.
 func TestRPC_ConcurrentCas(t *testing.T) {
-
 	nclients := 5
 	niters := 5
 
@@ -474,7 +453,7 @@ func Test_Restore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to restart server")
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
 }
 
 /*--------------------------------|Utility functions|--------------------------------------*/
@@ -636,51 +615,6 @@ func CurrLeader(Cluster []*raft.RaftMachine) int {
 	}
 }
 
-func printDB(myRaft raft.Raft, len int64) {
-	for j := int64(0); j < len; j++ {
-		res, err1 := myRaft.Cluster[0].Conf.Lg.Get(j)
-		if err1 != nil {
-			fmt.Print("\t")
-		} else {
-			fmt.Print(res)
-			fmt.Print("\t")
-		}
-
-		res, err1 = myRaft.Cluster[1].Conf.Lg.Get(j)
-		if err1 != nil {
-			fmt.Print("\t")
-		} else {
-			fmt.Print(res)
-			fmt.Print("\t")
-		}
-
-		res, err1 = myRaft.Cluster[2].Conf.Lg.Get(j)
-		if err1 != nil {
-			fmt.Print("\t")
-		} else {
-			fmt.Print(res)
-			fmt.Print("\t")
-		}
-
-		res, err1 = myRaft.Cluster[3].Conf.Lg.Get(j)
-		if err1 != nil {
-			fmt.Print("\t")
-		} else {
-			fmt.Print(res)
-			fmt.Print("\t")
-		}
-
-		res, err1 = myRaft.Cluster[4].Conf.Lg.Get(j)
-		if err1 != nil {
-			fmt.Print("\t")
-		} else {
-			fmt.Print(res)
-			fmt.Print("\t")
-		}
-		fmt.Println("")
-	}
-}
-
 func cleanDB() {
 	os.RemoveAll("./log")
 	os.RemoveAll("./state")
@@ -711,6 +645,7 @@ func getAddress(myId int) string {
 }
 
 /*
+//FOR TESTING MOCK CLUSTER.
 func mkClient(t *testing.T, id int) *Client {
 	var client *Client
 	raddr, err := net.ResolveTCPAddr("tcp", handlr.Servers[id].Address)

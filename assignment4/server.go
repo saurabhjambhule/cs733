@@ -40,7 +40,6 @@ var crlf = []byte{'\r', '\n'}
 
 func check(obj interface{}) {
 	if obj != nil {
-		fmt.Println(obj)
 		os.Exit(1)
 	}
 }
@@ -91,7 +90,6 @@ func serve(clientId string, myNode *raft.RaftMachine, clHandl *Handler) {
 	clHandl.RLock()
 	conn := clHandl.ClientMap[clientId]
 	clHandl.RUnlock()
-	//fmt.Println("***", conn)
 	reader := bufio.NewReader(conn)
 	for {
 		msg, msgerr, fatalerr := fs.GetMsg(reader)
@@ -113,14 +111,12 @@ func serve(clientId string, myNode *raft.RaftMachine, clHandl *Handler) {
 				break
 			}
 		}
-		//fmt.Println("---:", msg)
-
+		//msg other than read send to raft cluster.
 		if string(msg.Kind) != "r" {
-			//fmt.Println(msg)
 			msgByt, _ := json.Marshal(msg)
 			raft.ClientAppend(myNode, clientId, msgByt)
-			//fmt.Println("---->")
 		} else {
+			//serve read request directly.
 			time.Sleep(1 * time.Second)
 			response := fs.ProcessMsg(msg)
 			if !reply(conn, response) {
@@ -140,15 +136,12 @@ func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
 		select {
 		case commData := <-myNode.SM.CommMedium.CommitCh:
 			cmData := (commData).(sm.Commit)
-			//fmt.Println("@@@", clHandl.ClientMap)
 
 			clHandl.RLock()
 			conn := clHandl.ClientMap[cmData.Data.Id]
 			clHandl.RUnlock()
-			//fmt.Println("@@@", cmData.Data.Id)
 
 			redir := strings.Fields(string(cmData.Err))
-
 			if cmData.Err != nil {
 				if redir[0] == "ERR_REDIRECT" {
 					conn = clHandl.ClientMap[redir[1]]
@@ -159,7 +152,6 @@ func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
 					clHandl.Unlock()
 					break
 				}
-				//	fmt.Println("---:>")
 				reply(conn, &fs.Msg{Kind: 'M'})
 				conn.Close()
 				clHandl.Lock()
@@ -169,12 +161,8 @@ func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
 			}
 
 			data := []byte(cmData.Data.Logg)
-			//fmt.Println("<---", bytes.Compare([]byte(msgByt), data1))
 			json.Unmarshal(data, &msg)
-			//fmt.Println("---:::>", msg)
-			//fmt.Println("<---", msg)
 			response := fs.ProcessMsg(msg)
-			//fmt.Println("<:::---", response)
 
 			if !reply(conn, response) {
 				conn.Close()
@@ -202,11 +190,10 @@ func handlerConfig(myId int) *Handler {
 	decoder := json.NewDecoder(file)
 	err := decoder.Decode(&handl)
 	if err != nil {
-		fmt.Println("--error:", err)
+		panic(err)
 	}
 
 	//initializing map for handler.
-	//m.hm = make(map[string]string)
 	cliHandl.ClientMap = make(map[string]*net.TCPConn)
 
 	//initializing config structure from jason file.
@@ -219,7 +206,7 @@ func handlerConfig(myId int) *Handler {
 		}
 	}
 	if !foundMyId {
-		fmt.Println("--Expected this server's Id (\"%d\") to be present in the configuration", myId)
+		panic("--Expected this server's Id to be present in the configuration")
 	}
 	return cliHandl
 }
@@ -238,7 +225,6 @@ func serverMain(myId int) {
 		cliHandl.Lock()
 		cliHandl.ClientMap[clientId] = tcp_conn
 		cliHandl.Unlock()
-		fmt.Println("conn-", clientId, cliHandl.ClientMap[clientId])
 		go serve(clientId, node, cliHandl)
 		go responseReq(node, cliHandl)
 	}
@@ -259,7 +245,6 @@ func serverMainTest(myId int) (*Handler, *raft.RaftMachine) {
 			cliHandl.Lock()
 			cliHandl.ClientMap[clientId] = tcp_conn
 			cliHandl.Unlock()
-			//fmt.Println("conn-", clientId, cliHandl.ClientMap[clientId])
 			go serve(clientId, node, cliHandl)
 			go responseReq(node, cliHandl)
 		}

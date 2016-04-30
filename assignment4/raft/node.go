@@ -90,7 +90,6 @@ func (myRaft Raft) GetLeader() int {
 		fmt.Print("")
 		for i := 0; i < PEERS; i++ {
 			if myRaft.Cluster[i].SM.Status == LEAD {
-				//getLock.Unlock()
 				return i
 			}
 		}
@@ -112,14 +111,11 @@ func (server RaftMachine) Shutdown(cl *mock.MockCluster) {
 	for i := 0; i < 1; i++ {
 		server.SM.CommMedium.ShutdownCh <- nil
 	}
-	//server.SM.FollSys()
 }
 
 //Client's message to Raft node.
 func ClientAppend(server *RaftMachine, cliId string, cmdReq []byte) {
 	reqApp := sm.Append{Id: cliId, Data: cmdReq}
-	//fmt.Println(">->", reqApp)
-
 	server.SM.CommMedium.ClientCh <- reqApp
 }
 
@@ -175,15 +171,10 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 			case sm.LoggStore:
 				//for adding log into db.
 				msg := incm.(sm.LoggStore)
-				//fmt.Println("---->>>", msg)
 				storeData(msg.Data, myConf, msg.Index)
 
 			case sm.StateStore:
 			}
-
-			//		case incm := <-SM.CommMedium.RecoveryCh:
-			//			msg := incm.(sm.Send)
-			//			processOutbox(server, SM, msg)
 		}
 	}
 	fmt.Println("Bye", incm)
@@ -193,7 +184,6 @@ func processEvents(server cluster.Server, SM *sm.State_Machine, myConf *Config) 
 func processInbox(server cluster.Server, SM *sm.State_Machine) {
 	for {
 		env := <-server.Inbox()
-		//fmt.Printf("\n-%T", env.Msg)
 		switch env.Msg.(type) {
 		case sm.VoteReq:
 			SM.CommMedium.NetCh <- env.Msg
@@ -242,7 +232,7 @@ func storeData(data []sm.MyLogg, myConf *Config, ind int) {
 	for i := 0; i < len(data); i++ {
 		err := myConf.Lg.Append(data[i])
 		if err != nil {
-			fmt.Println("error:", err)
+			panic(err)
 		}
 	}
 }
@@ -253,7 +243,7 @@ func restoreData(SM *sm.State_Machine, myConf *Config) {
 	if last != -1 {
 		state, err := myConf.St.Get(last)
 		if err != nil {
-			fmt.Println("error:-", err)
+			panic(err)
 		}
 		data := state.(sm.Persi_State)
 		SM.Persi_State = data
@@ -265,12 +255,13 @@ func restoreData(SM *sm.State_Machine, myConf *Config) {
 		for i := int64(0); i <= last; i++ {
 			log, err := myConf.St.Get(i)
 			if err != nil {
-				fmt.Println("error:-", err)
+				panic(err)
 			}
 			logg := log.(sm.MyLogg)
 			SM.Logg.Logg[i] = logg
 		}
 	}
+	SM.LoggInd = int32(last)
 }
 
 //Configuration of Log and Node.
@@ -278,12 +269,12 @@ func logConfig(myId int, myConf *Config) {
 	var conf MyConfig
 	file, errr := os.Open("config/log_config.json")
 	if errr != nil {
-		fmt.Println("+error:", errr)
+		panic(errr)
 	}
 	decoder := json.NewDecoder(file)
 	err := decoder.Decode(&conf)
 	if err != nil {
-		fmt.Println("-error:", err)
+		panic(err)
 	}
 	foundMyId := false
 	//initializing config structure from jason file.
@@ -298,7 +289,7 @@ func logConfig(myId int, myConf *Config) {
 		}
 	}
 	if !foundMyId {
-		fmt.Println("Expected this server's Id (\"%d\") to be present in the configuration", myId)
+		panic("Expected this server's Id to be present in the configuration")
 	}
 }
 
@@ -338,11 +329,11 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 			if last == -1 {
 				err := myConf.St.Append(SM.Persi_State)
 				if err != nil {
-					fmt.Println("error:-", err)
+					panic(err)
 				}
 				err = myConf.St.Append(SM.Persi_State)
 				if err != nil {
-					fmt.Println("error:-", err)
+					panic(err)
 				}
 			}
 			last = myConf.St.GetLastIndex()
@@ -350,13 +341,13 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 
 			err := myConf.St.Append(SM.Persi_State)
 			if err != nil {
-				fmt.Println("error:-", err)
+				panic(err)
 			}
 
 			last = myConf.St.GetLastIndex()
 			state, err := myConf.St.Get(last)
 			if err != nil {
-				fmt.Println("error:-", err)
+				panic(err)
 			}
 			data := state.(sm.Persi_State)
 			SM.Persi_State = data
@@ -425,15 +416,5 @@ func StartRaft(myId int) *RaftMachine {
 	myNode.Conf = myConf
 	myNode.Node = server
 	go startNode(myConf, server, SM)
-	//fmt.Println(myNode.Conf.Lg)
 	return myNode
 }
-
-/***************---------------------NORMAL SERVER CODE USING PORTS WORKING---------------------**************
-func main() {
-	flag.Parse()
-	//Get Server Id from command line.
-	myId, _ := strconv.Atoi(flag.Args()[0])
-	startRaft(myId)
-}
-***************------------------------------------------------------------------------------***************/
