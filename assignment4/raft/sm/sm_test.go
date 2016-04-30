@@ -20,7 +20,7 @@ type TestCases struct {
 var cnt int
 
 //Initializing Testing.
-func TestRaftSM(t *testing.T) {
+func TestCreateRaftSM(t *testing.T) {
 	//Initializing Peers.
 	Peer := make(map[int32]int32)
 	Peer[1000] = 0

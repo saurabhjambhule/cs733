@@ -56,7 +56,7 @@ func GetMsg(reader *bufio.Reader) (msg *Msg, msgerr error, fatalerr error) {
 	buf := make([]byte, MAX_FIRST_LINE_SIZE)
 	msg, msgerr, fatalerr = parseFirst(reader, buf)
 	if fatalerr == nil {
-		if msg.Kind == 'w' /*write*/|| msg.Kind == 'c' /*cas*/|| msg.Kind == 'C' /*CONTENTS*/{
+		if msg.Kind == 'w' /*write*/ || msg.Kind == 'c' /*cas*/ || msg.Kind == 'C' /*CONTENTS*/ {
 			msg.Contents, fatalerr = parseSecond(reader, msg.Numbytes)
 		}
 	}
@@ -71,7 +71,7 @@ func parseFirst(reader *bufio.Reader, buf []byte) (msg *Msg, msgerr error, fatal
 	var err error
 	var msgstr string
 	var fields []string
-	
+
 	if msgstr, err = fillLine(buf, reader); err != nil { // read until EOL
 		return nil, nil, err
 	}
@@ -154,6 +154,9 @@ func parseFirst(reader *bufio.Reader, buf []byte) (msg *Msg, msgerr error, fatal
 		response = true
 	case "ERR_INTERNAL":
 		kind = 'I'
+		response = true
+	case "ERR_REDIRECT":
+		kind = 'R'
 		response = true
 	default:
 		fatalerr = fmt.Errorf("Command %s not recognized", fields[0])

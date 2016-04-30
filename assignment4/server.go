@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/saurabhjambhule/cs733/assignment4/fs"
 	"github.com/saurabhjambhule/cs733/assignment4/raft"
@@ -52,6 +54,7 @@ func reply(conn *net.TCPConn, msg *fs.Msg) bool {
 		_, err = conn.Write(data)
 	}
 	var resp string
+
 	switch msg.Kind {
 	case 'C': // read response
 		resp = fmt.Sprintf("CONTENTS %d %d %d", msg.Version, msg.Numbytes, msg.Exptime)
@@ -68,8 +71,11 @@ func reply(conn *net.TCPConn, msg *fs.Msg) bool {
 		resp = "ERR_CMD_ERR"
 	case 'I':
 		resp = "ERR_INTERNAL"
+	case 'R':
+		resp = "ERR_REDIRECT " + string(msg.Contents)
 	default:
 		fmt.Printf("Unknown response kind '%c'", msg.Kind)
+
 		return false
 	}
 	resp += "\r\n"
@@ -115,6 +121,7 @@ func serve(clientId string, myNode *raft.RaftMachine, clHandl *Handler) {
 			raft.ClientAppend(myNode, clientId, msgByt)
 			//fmt.Println("---->")
 		} else {
+			time.Sleep(1 * time.Second)
 			response := fs.ProcessMsg(msg)
 			if !reply(conn, response) {
 				conn.Close()
@@ -139,9 +146,19 @@ func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
 			conn := clHandl.ClientMap[cmData.Data.Id]
 			clHandl.RUnlock()
 			//fmt.Println("@@@", cmData.Data.Id)
-			//fmt.Println("@@@>", cmData)
+
+			redir := strings.Fields(string(cmData.Err))
 
 			if cmData.Err != nil {
+				if redir[0] == "ERR_REDIRECT" {
+					conn = clHandl.ClientMap[redir[1]]
+					reply(conn, &fs.Msg{Kind: 'R', Contents: []byte(strconv.Itoa(int(cmData.Index)))})
+					conn.Close()
+					clHandl.Lock()
+					delete(clHandl.ClientMap, cmData.Data.Id)
+					clHandl.Unlock()
+					break
+				}
 				//	fmt.Println("---:>")
 				reply(conn, &fs.Msg{Kind: 'M'})
 				conn.Close()
@@ -150,6 +167,7 @@ func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
 				clHandl.Unlock()
 				break
 			}
+
 			data := []byte(cmData.Data.Logg)
 			//fmt.Println("<---", bytes.Compare([]byte(msgByt), data1))
 			json.Unmarshal(data, &msg)
@@ -167,7 +185,7 @@ func responseReq(myNode *raft.RaftMachine, clHandl *Handler) {
 			}
 
 		case commData := <-myNode.SM.CommMedium.CommitInfoCh:
-			cmData := (commData).(sm.Commit)
+			cmData := (commData).(sm.CommitInfo)
 			data := []byte(cmData.Data.Logg)
 			json.Unmarshal(data, &msg)
 			response := fs.ProcessMsg(msg)
@@ -208,7 +226,7 @@ func handlerConfig(myId int) *Handler {
 
 func serverMain(myId int) {
 	cliHandl := handlerConfig(myId)
-	//node := raft.StartRaft(myId)
+	node := raft.StartRaft(myId)
 	tcpaddr, err := net.ResolveTCPAddr("tcp", cliHandl.Address)
 	check(err)
 	tcp_acceptor, err := net.ListenTCP("tcp", tcpaddr)
@@ -220,8 +238,9 @@ func serverMain(myId int) {
 		cliHandl.Lock()
 		cliHandl.ClientMap[clientId] = tcp_conn
 		cliHandl.Unlock()
-		//go serve(tcp_conn, node, cliHandl)
-		//go responseReq(node, cliHandl)
+		fmt.Println("conn-", clientId, cliHandl.ClientMap[clientId])
+		go serve(clientId, node, cliHandl)
+		go responseReq(node, cliHandl)
 	}
 }
 

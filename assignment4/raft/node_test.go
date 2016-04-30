@@ -4,72 +4,67 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/cs733-iitb/cluster"
 	"github.com/cs733-iitb/cluster/mock"
+
 	"github.com/saurabhjambhule/cs733/assignment4/raft/sm"
 )
 
-func TestBasic(t *testing.T) {
-	//Initialization.
-	var myRaft Raft
-	myRaft.GetLock = &sync.Mutex{}
+var myRaft Raft
+var leaderId int
+var clusterT *mock.MockCluster
+var partCl0 []int
+var partCl1 []int
+var partCl2 []int
 
-	partCl0 := make([]int, 0)
-	partCl1 := make([]int, 0)
-	partCl2 := make([]int, 0)
+func Test_StartMockCluster(t *testing.T) {
+	//var myRaft Raft
+	//Initialization.
+	partCl0 = make([]int, 0)
+	partCl1 = make([]int, 0)
+	partCl2 = make([]int, 0)
 	partCl0 = append(partCl0, 1, 2, 3, 4, 5)
 
-	cluster := new(mock.MockCluster)
-	//cluster = new(mock.MockCluster)
-	cleanDB()                                //Clear the old database.
-	myRaft, cluster = myRaft.makeMockRafts() //make mock cluster
+	//cluster := new(mock.MockCluster)
+	clusterT = new(mock.MockCluster)
+	cleanDB()                                 //Clear the old database.
+	myRaft, clusterT = myRaft.makeMockRafts() //make mock cluster
 	//Simple cluster can also be created using myraft.makeRafts() method.
 	time.Sleep(1 * time.Second)
 
-	leaderId := myRaft.GetLeader() //Get current leader.
-	/*leaderId := 1
-	for {
-		myRaft.Cluster[0].Append([]byte(string("getLeader")))
-		ci := <-myRaft.Cluster[0].SM.CommMedium.CommitCh
-		tmp := ci.(sm.Commit)
-		if tmp.Err != nil {
-			time.Sleep(1 * time.Second)
-			leaderId, _ = strconv.Atoi(string(tmp.Data))
-			if leaderId == 0 {
-				leaderId = 1
-			}
-			myRaft.Cluster[leaderId-1].Append([]byte(string("getLeader")))
-			ci := <-myRaft.Cluster[leaderId-1].SM.CommMedium.CommitCh
-			tmp := ci.(sm.Commit)
-			if tmp.Err == nil {
-				break
-			}
-		}
-	}
-	fmt.Println("----->", leaderId)*/
+	leaderId = myRaft.GetLeader() //Get current leader.
+	_ = partCl1
+	_ = partCl2
+}
 
-	fmt.Println("Basic Replication-", leaderId)
+func Test_BasicReplication(t *testing.T) {
+	//fmt.Println("Basic Replication-", leaderId)
 	//Appending Entries And check for replication of entry.
-	for j := 1; j <= 5; j++ {
+	for j := 1; j <= 1000; j++ {
 		str := "test - " + strconv.Itoa(j)
 		myRaft.Cluster[leaderId].Append([]byte(str))
 	}
 	//Checking whether Entries are replicated.
-	/*for j := 1; j <= 5; j++ {
+	for j := 1; j <= 1000; j++ {
 		for i := 0; i < PEERS; i++ {
 			str := "test - " + strconv.Itoa(j)
-			ci := <-myRaft.Cluster[i].SM.CommMedium.CommitCh
-			tmp := ci.(sm.CommitInfo)
-			expect(t, tmp, str, myRaft.Cluster[i].SM.Id)
-		}-
+			select {
+			case ci := <-myRaft.Cluster[i].SM.CommMedium.CommitInfoCh:
+				tmp := ci.(sm.CommitInfo)
+				expectF(t, tmp, str, myRaft.Cluster[i].SM.Id)
 
-	}*/
+			case ci := <-myRaft.Cluster[i].SM.CommMedium.CommitCh:
+				tmp := ci.(sm.Commit)
+				expectL(t, tmp, str, myRaft.Cluster[i].SM.Id)
+			}
+		}
+	}
+}
 
-	//Creating partion.
+func Test_Partition(t *testing.T) {
 	L := myRaft.GetLeader()
 
 	//fmt.Println("\n\n\nLeader-", L)
@@ -77,45 +72,33 @@ func TestBasic(t *testing.T) {
 	case 0, 1:
 		partCl1 = append(partCl1, 1, 2)
 		partCl2 = append(partCl2, 3, 4, 5)
-		cluster.Partition(partCl1, partCl2)
+		clusterT.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
 		//leaderId = myRaft.GetMockLeader(partCl2)
 	case 2, 3:
 		partCl1 = append(partCl1, 3, 4)
 		partCl2 = append(partCl2, 1, 2, 5)
-		cluster.Partition(partCl1, partCl2)
+		clusterT.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
 		//leaderId = myRaft.GetMockLeader(partCl2)
 	case 4:
 		partCl1 = append(partCl1, 4, 5)
 		partCl2 = append(partCl2, 1, 2, 3)
-		cluster.Partition(partCl1, partCl2)
+		clusterT.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
 		//leaderId = myRaft.GetMockLeader(partCl2)
 	}
 
-	fmt.Println("Partition_1-", L)
 	//Appending Entries And check for replication of entry.
 	for j := 6; j <= 10; j++ {
 		str := "test - " + strconv.Itoa(j)
 		myRaft.Cluster[L].Append([]byte(str))
 	}
 
-	//Checking whether Entries are replicated.
-	/*for j := 6; j <= 10; j++ {
-		for i := 0; i < 2; i++ {
-			str := "test - " + strconv.Itoa(j)
-			ci := <-myRaft.Cluster[partCl1[i]-1].SM.CommMedium.CommitCh
-			tmp := ci.(sm.CommitInfo)
-			expect(t, tmp, str, myRaft.Cluster[partCl1[i]-1].SM.Id)
-		}
-	}*/
-
 	//Merging the cluster back.
-	cluster.Heal()
+	clusterT.Heal()
 	time.Sleep(1 * time.Second)
 	leaderId = myRaft.GetLeader()
-	fmt.Println("Healing_1-", leaderId)
 	//Appending Entries And check for replication of entry.
 	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")
 
@@ -124,37 +107,56 @@ func TestBasic(t *testing.T) {
 		myRaft.Cluster[leaderId].Append([]byte(str))
 	}
 	//Checking whether Entries are replicated.
-	/*for i := 0; i < PEERS; i++ {
-		for j := 11; j <= 15; j++ {
+	for j := 6; j <= 15; j++ {
+		for i := 0; i < PEERS; i++ {
 			str := "test - " + strconv.Itoa(j)
-			ci := <-myRaft.Cluster[i].SM.CommMedium.CommitCh
-			tmp := ci.(sm.CommitInfo)
-			expect(t, tmp, str, myRaft.Cluster[i].SM.Id)
-		}
+			select {
+			case ci := <-myRaft.Cluster[i].SM.CommMedium.CommitInfoCh:
+				tmp := ci.(sm.CommitInfo)
+				expectF(t, tmp, str, myRaft.Cluster[i].SM.Id)
 
-	}*/
+			case ci := <-myRaft.Cluster[i].SM.CommMedium.CommitCh:
+				tmp := ci.(sm.Commit)
+				expectL(t, tmp, str, myRaft.Cluster[i].SM.Id)
+			}
+		}
+	}
+
 	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")
 
-	//printDB(myRaft, 15)
+	partCl2 = partCl2[:0]
+	partCl1 = partCl1[:0]
+}
 
-	//Creating partion.
-	L = myRaft.GetLeader()
+/*
+func Test_PartitionLarger(t *testing.T) {
+	L := myRaft.GetLeader()
+	fmt.Println("----->", L)
+
 	switch L {
 	case 0, 1:
-		cluster.Partition(partCl1, partCl2)
+		partCl1 = append(partCl1, 1, 2)
+		partCl2 = append(partCl2, 3, 4, 5)
+		clusterT.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
 		leaderId = myRaft.GetMockLeader(partCl2)
 	case 2, 3:
-		cluster.Partition(partCl1, partCl2)
+		partCl1 = append(partCl1, 3, 4)
+		partCl2 = append(partCl2, 1, 2, 5)
+		clusterT.Partition(partCl1, partCl2)
+
 		//time.Sleep(1 * time.Second)
 		leaderId = myRaft.GetMockLeader(partCl2)
 	case 4:
-		cluster.Partition(partCl1, partCl2)
+		partCl1 = append(partCl1, 4, 5)
+		partCl2 = append(partCl2, 1, 2, 3)
+		clusterT.Partition(partCl1, partCl2)
 		//time.Sleep(1 * time.Second)
 		leaderId = myRaft.GetMockLeader(partCl2)
 	}
 
 	fmt.Println("Partition_2-", leaderId)
+	fmt.Println(partCl1, partCl2)
 
 	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")
 
@@ -164,22 +166,33 @@ func TestBasic(t *testing.T) {
 		myRaft.Cluster[leaderId-1].Append([]byte(str))
 	}
 	//Checking whether Entries are replicated.
-	/*for j := 16; j <= 20; j++ {
+	for j := 16; j <= 20; j++ {
 		for i := 0; i < 3; i++ {
 			str := "test - " + strconv.Itoa(j)
-			ci := <-myRaft.Cluster[partCl2[i]-1].SM.CommMedium.CommitCh
-			tmp := ci.(sm.CommitInfo)
-			expect(t, tmp, str, myRaft.Cluster[partCl2[i]-1].SM.Id)
+			select {
+			case ci := <-myRaft.Cluster[partCl2[i]-1].SM.CommMedium.CommitInfoCh:
+				tmp := ci.(sm.CommitInfo)
+				expectF(t, tmp, str, myRaft.Cluster[partCl2[i]-1].SM.Id)
+
+			case ci := <-myRaft.Cluster[partCl2[i]-1].SM.CommMedium.CommitCh:
+				tmp := ci.(sm.Commit)
+				expectL(t, tmp, str, myRaft.Cluster[partCl2[i]-1].SM.Id)
+			}
 		}
-	}*/
+	}
+
+	fmt.Println("**********")
+
 	//printDB(myRaft, 20)
 	//for i := 0; i < 5; i++ {
 	//	fmt.Println(myRaft.Cluster[i].SM.Id, ")", myRaft.Cluster[i].SM.Logg)
 	//}
 
 	//Merging the cluster back.
-	cluster.Heal()
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Second)
+
+	clusterT.Heal()
+	time.Sleep(3 * time.Second)
 	leaderId = myRaft.GetLeader()
 	fmt.Println("Healing_2-", leaderId)
 
@@ -193,82 +206,105 @@ func TestBasic(t *testing.T) {
 		myRaft.Cluster[leaderId].Append([]byte(str))
 	}
 
-	//time.Sleep(1 * time.Second)
-	//fmt.Print(myRaft.Cluster[leaderId].SM.LoggInd, "-", myRaft.Cluster[leaderId].SM.Status, ":", myRaft.Cluster[leaderId].SM.NextIndex, "\n")
-
-	//for i := 0; i < 5; i++ {
-	//	fmt.Println(myRaft.Cluster[i].SM.Id, ")", myRaft.Cluster[i].SM.Logg)
-	//}
-	//printDB(myRaft, 25)
-
 	//Checking whether Entries are replicated.
+	for j := 21; j <= 25; j++ {
+		for i := 0; i < 3; i++ {
+			str := "test - " + strconv.Itoa(j)
+			select {
+			//	case ci := <-myRaft.Cluster[partCl2[i]-1].SM.CommMedium.CommitInfoCh:
+			//		tmp := ci.(sm.CommitInfo)
+			//		expectF(t, tmp, str, myRaft.Cluster[partCl2[i]-1].SM.Id)
 
-	/*for i := 0; i < PEERS; i++ {
-		str := "test - " + strconv.Itoa(25)
-		fmt.Println(myRaft.Cluster[i].Conf.Lg.Get(int64(20)))
-		//	expectMatch(t, i, str, myRaft.Cluster[i].SM.Logg.Logg[int32(24)])
-		_ = str
-	}*/
+			case ci := <-myRaft.Cluster[partCl2[i]-1].SM.CommMedium.CommitCh:
+				tmp := ci.(sm.Commit)
+				expectL(t, tmp, str, myRaft.Cluster[partCl2[i]-1].SM.Id)
+			}
+		}
+	}
+	fmt.Println("**********")
 
-	fmt.Println("Shutting Down-", leaderId)
+	for j := 16; j <= 25; j++ {
+		for i := 0; i < 2; i++ {
+			str := "test - " + strconv.Itoa(j)
+			select {
+			case ci := <-myRaft.Cluster[partCl1[i]-1].SM.CommMedium.CommitInfoCh:
+				tmp := ci.(sm.CommitInfo)
+				expectF(t, tmp, str, myRaft.Cluster[partCl1[i]-1].SM.Id)
 
+			case ci := <-myRaft.Cluster[partCl1[i]-1].SM.CommMedium.CommitCh:
+				tmp := ci.(sm.Commit)
+				expectL(t, tmp, str, myRaft.Cluster[partCl1[i]-1].SM.Id)
+			}
+		}
+	}
+
+}
+
+*/
+
+func Test_MockShutdown(t *testing.T) {
 	//Shutting down on of the server.
 	time.Sleep(1 * time.Second)
 	//fmt.Println("\n>>>Shutdown-", leaderId)
-
-	myRaft.Cluster[leaderId].Shutdown(cluster)
+	downSys := leaderId
+	myRaft.Cluster[leaderId].Shutdown(clusterT)
+	//fmt.Println(partCl0)
 	partCl0 = append(partCl0[:leaderId], partCl0[leaderId+1:]...)
+	//fmt.Println(partCl0)
 
 	time.Sleep(1 * time.Second)
 
 	leaderId = myRaft.GetLeader()
-	fmt.Println("New Leader-", leaderId)
+	//fmt.Println("New Leader-", leaderId)
 
 	//Appending Entries And check for replication of entry.
 	for j := 26; j <= 30; j++ {
 		str := "test - " + strconv.Itoa(j)
 		myRaft.Cluster[leaderId].Append([]byte(str))
 	}
-	/*
-		//Checking whether Entries are replicated.
+
+	//Checking whether Entries are replicated.
+	for j := 26; j <= 30; j++ {
 		for i := 0; i < PEERS-1; i++ {
-			for j := 26; j <= 30; j++ {
-				str := "test - " + strconv.Itoa(j)
-				ci := <-myRaft.Cluster[partCl0[i]-1].SM.CommMedium.CommitCh
+			str := "test - " + strconv.Itoa(j)
+			select {
+			case ci := <-myRaft.Cluster[partCl0[i]-1].SM.CommMedium.CommitInfoCh:
 				tmp := ci.(sm.CommitInfo)
-				expect(t, tmp, str, myRaft.Cluster[partCl0[i]-1].SM.Id)
+				expectF(t, tmp, str, myRaft.Cluster[partCl0[i]-1].SM.Id)
+
+			case ci := <-myRaft.Cluster[partCl0[i]-1].SM.CommMedium.CommitCh:
+				tmp := ci.(sm.Commit)
+				expectL(t, tmp, str, myRaft.Cluster[partCl0[i]-1].SM.Id)
 			}
-
 		}
-
-		/*for i := 0; i < 5; i++ {
-			fmt.Println(myRaft.Cluster[i].SM.Id, ")", myRaft.Cluster[i].SM.Logg)
-		}*/
-
-	time.Sleep(5 * time.Second)
-	//for {
-	//	flag := false
-	for i := 0; i < PEERS; i++ {
-		fmt.Print(myRaft.Cluster[i].SM.CommitIndex)
-		//if myRaft.Cluster[i].SM.CommitIndex == 29 {
-		//			flag = true
-		//	}
-		//		if flag {
-		//			break
 	}
-	//	}
-	//}
-	//Printing database entries of all nodes in cluster.
-	printDB(myRaft, 30)
+
+	if myRaft.Cluster[downSys].SM.CommitIndex > int32(1020) {
+		t.Fatal("Shutdown not working")
+	}
+
 }
 
-func expect(t *testing.T, ci sm.CommitInfo, str string, id int32) {
+func expectF(t *testing.T, ci sm.CommitInfo, str string, id int32) {
 	//fmt.Println("~~~~>", id)
 	if ci.Err != nil {
 		t.Fatal(ci.Err)
 	}
-	if string(ci.Data) != str {
-		t.Fatal(id, "Got different data", str, " - ", string(ci.Data))
+	//fmt.Println(string(ci.Data.Logg))
+	if string(ci.Data.Logg) != str {
+		t.Fatal(id, "Follower Got different data", str, " - ", string(ci.Data.Logg))
+	}
+}
+
+func expectL(t *testing.T, ci sm.Commit, str string, id int32) {
+	//fmt.Println("~~~~>", id)
+	if ci.Err != nil {
+		t.Fatal(ci.Err)
+	}
+	//fmt.Println("-", string(ci.Data.Logg))
+
+	if string(ci.Data.Logg) != str {
+		t.Fatal(id, "Leader Got different data", str, " - ", string(ci.Data.Logg))
 	}
 }
 
@@ -280,6 +316,8 @@ func expectMatch(t *testing.T, id int, str string, str1 string) {
 
 func cleanDB() {
 	os.RemoveAll("./log")
+	os.RemoveAll("./state")
+
 }
 
 func (myRaft Raft) GetMockLeader(id []int) int {
@@ -302,11 +340,6 @@ func (myRaft Raft) makeRafts() Raft {
 		myNode := new(RaftMachine)
 		SM := new(sm.State_Machine)
 		myConf := new(Config)
-		myLock := new(Locking)
-
-		myLock.GetLock = &sync.Mutex{}
-		myLock.TimerLock = &sync.Mutex{}
-		myNode.Lock = myLock
 
 		server := createNode(id, myConf, SM)
 		SM.Id = int32(id)

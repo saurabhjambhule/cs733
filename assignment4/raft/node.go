@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	FTIME       = 4000 //seconds
-	CTIME       = 4000 //seconds(re-election)
+	FTIME       = 3000 //seconds
+	CTIME       = 3000 //seconds(re-election)
 	LTIME       = 1000 //milliseconds(haertbeat)
 	RANGE       = 1000 //timeout upperlimit in seconds for candIdate and follower
 	TESTENTRIES = 1000
@@ -35,14 +35,19 @@ const (
 
 //Contains raft node related data .
 type Config struct {
-	Id               int    //this node's Id. One of the cluster's entries should match
-	LogDir           string //Log file directory for this node
+	Id     int    //this node's Id. One of the cluster's entries should match
+	LogDir string //Log file directory for this node
+	StDir  string //State file directory for this node
+
 	ElectionTimeout  int
 	HeartbeatTimeout int
-	DoTO             *time.Timer //timeout the state after DoTO
+	DoTO             *time.Timer  //timeout the state after DoTO
+	DoStore          *time.Ticker //store state after tick
 	Lg               *log.Log
-	TimeLock         sync.RWMutex
-	ProcessLock      sync.RWMutex
+	St               *log.Log
+
+	TimeLock    sync.RWMutex
+	ProcessLock sync.RWMutex
 }
 
 //Contains all raft node's data of entire cluster.
@@ -56,7 +61,6 @@ type RaftMachine struct {
 	SM   *sm.State_Machine
 	Conf *Config
 	sync.RWMutex
-	CommitInfoCh chan interface{}
 }
 
 //Contains data of entire cluster.
@@ -243,6 +247,32 @@ func storeData(data []sm.MyLogg, myConf *Config, ind int) {
 	}
 }
 
+func restoreData(SM *sm.State_Machine, myConf *Config) {
+	//restore persistant state
+	last := myConf.St.GetLastIndex()
+	if last != -1 {
+		state, err := myConf.St.Get(last)
+		if err != nil {
+			fmt.Println("error:-", err)
+		}
+		data := state.(sm.Persi_State)
+		SM.Persi_State = data
+	}
+
+	//restore log
+	last = myConf.Lg.GetLastIndex()
+	if last != -1 {
+		for i := int64(0); i <= last; i++ {
+			log, err := myConf.St.Get(i)
+			if err != nil {
+				fmt.Println("error:-", err)
+			}
+			logg := log.(sm.MyLogg)
+			SM.Logg.Logg[i] = logg
+		}
+	}
+}
+
 //Configuration of Log and Node.
 func logConfig(myId int, myConf *Config) {
 	var conf MyConfig
@@ -262,6 +292,7 @@ func logConfig(myId int, myConf *Config) {
 			foundMyId = true
 			myConf.Id = myId
 			myConf.LogDir = srv.LogDir
+			myConf.StDir = srv.StDir
 			myConf.ElectionTimeout = srv.ElectionTimeout
 			myConf.HeartbeatTimeout = srv.HeartbeatTimeout
 		}
@@ -283,6 +314,7 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	gob.Register(sm.MyLogg{})
 	gob.Register(sm.Commit{})
 	gob.Register(sm.Append{})
+	gob.Register(sm.Persi_State{})
 
 	//Channel initialization.
 	SM.CommMedium.ClientCh = make(chan interface{}, 10000)
@@ -298,10 +330,47 @@ func initNode(Id int, myConf *Config, SM *sm.State_Machine) {
 	//Initialize the timer object for timeuts.
 	myConf.DoTO = time.AfterFunc(10, func() {})
 
+	//Store persitant state
+	myConf.DoStore = time.NewTicker(3 * time.Second)
+	go func() {
+		for _ = range myConf.DoStore.C {
+			last := myConf.St.GetLastIndex()
+			if last == -1 {
+				err := myConf.St.Append(SM.Persi_State)
+				if err != nil {
+					fmt.Println("error:-", err)
+				}
+				err = myConf.St.Append(SM.Persi_State)
+				if err != nil {
+					fmt.Println("error:-", err)
+				}
+			}
+			last = myConf.St.GetLastIndex()
+			myConf.St.TruncateToEnd(last)
+
+			err := myConf.St.Append(SM.Persi_State)
+			if err != nil {
+				fmt.Println("error:-", err)
+			}
+
+			last = myConf.St.GetLastIndex()
+			state, err := myConf.St.Get(last)
+			if err != nil {
+				fmt.Println("error:-", err)
+			}
+			data := state.(sm.Persi_State)
+			SM.Persi_State = data
+		}
+	}()
+
 	//Initialize the Log and Node configuration.
 	logConfig(Id, myConf)
 	var err error
 	myConf.Lg, err = log.Open(myConf.LogDir)
+	if err != nil {
+		panic(err)
+	}
+	myConf.St, err = log.Open(myConf.StDir)
 	if err != nil {
 		panic(err)
 	}
@@ -333,7 +402,7 @@ func startNode(myConf *Config, server cluster.Server, SM *sm.State_Machine) {
 	//Start backaground process to listen incomming packets from other servers.
 	go processInbox(server, SM)
 	//Start StateMachine in follower state.
-	go SM.FollSys()
+	go SM.StartFollSys()
 	//Raft node Processing.
 	myConf.ProcessLock.Lock()
 	processEvents(server, SM, myConf)
@@ -348,10 +417,13 @@ func StartRaft(myId int) *RaftMachine {
 	//Start Node.
 	server := createNode(myId, myConf, SM)
 	SM.Id = int32(myId)
+
+	//Restore previous test.
+	restoreData(SM, myConf)
+
 	myNode.SM = SM
 	myNode.Conf = myConf
 	myNode.Node = server
-	myNode.CommitInfoCh = make(chan interface{})
 	go startNode(myConf, server, SM)
 	//fmt.Println(myNode.Conf.Lg)
 	return myNode

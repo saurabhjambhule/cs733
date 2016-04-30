@@ -50,56 +50,56 @@ var cmds []*exec.Cmd
 //var mutex = &sync.Mutex{}
 //var wg sync.WaitGroup
 
-func TestStartCluster(t *testing.T) {
+func Test_StartCluster(t *testing.T) {
 	cleanDB()
-	for i := 1; i <= PEER; i++ {
-		tempH, tempR := serverMainTest(i)
-		handlr.Servers = append(handlr.Servers, tempH)
-		node.Cluster = append(node.Cluster, tempR)
-		//fmt.Println(handlr.Servers[i-1].ClientMap)
-	}
-	time.Sleep(2 * time.Second)
-
 	/*
-		cmds = make([]*exec.Cmd, 6)
-		cmds[0] = exec.Command("go build *.go")
-		for i := 1; i <= 5; i++ {
-			cmds[i] = exec.Command("./server", strconv.Itoa(i))
-			err := cmds[i].Start()
-			if err != nil {
-				panic(err)
-			}
+		for i := 1; i <= PEER; i++ {
+			tempH, tempR := serverMainTest(i)
+			handlr.Servers = append(handlr.Servers, tempH)
+			node.Cluster = append(node.Cluster, tempR)
+			//fmt.Println(handlr.Servers[i-1].ClientMap)
 		}
+		time.Sleep(2 * time.Second)
 	*/
+
+	cmds = make([]*exec.Cmd, 6)
+	//cmds[0] = exec.Command("go build *.go")
+	for i := 1; i <= 5; i++ {
+		cmds[i] = exec.Command("./server", strconv.Itoa(i))
+		err := cmds[i].Start()
+		cmds[i].Stdout = os.Stdout
+		cmds[i].Stderr = os.Stderr
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	//fmt.Println(cmds)
 }
 
 func TestLeaderElection(t *testing.T) {
 	leaderId = -1
-	flag := false
 	time.Sleep(2 * time.Second)
-	for {
-		for i := 0; i < 5; i++ {
-			cl := mkClient(t, i)
-			defer cl.close()
-			data := "Get Leader"
-			m, _ := cl.write("leader", data, 0)
-			if m.Kind == 'O' {
-				leaderId = i
-				flag = true
-				break
-			}
+
+	for i := 0; i < 5; i++ {
+		cl := mkClient(t, i)
+		defer cl.close()
+		data := "Get Leader"
+		m, err := cl.write("leader", data, 0)
+		if err == nil && m.Kind == 'R' {
+			leaderId = m.Numbytes
+			break
 		}
-		if flag {
+		if err == nil && m.Kind == 'O' {
+			leaderId = i
 			break
 		}
 	}
-
-	fmt.Println("Leader:", leaderId)
 }
 
 func TestRPC_BasicSequential(t *testing.T) {
 
-	//leaderId = CurrLeader(node.Cluster)
+	//leaderId = 0
 	cl := mkClient(t, leaderId)
 	defer cl.close()
 	//fmt.Println("...")
@@ -276,11 +276,10 @@ func TestRPC_BasicTimer(t *testing.T) {
 
 // nclients write to the same file. At the end the file should be
 // any one clients' last write
-
 func TestRPC_ConcurrentWrites(t *testing.T) {
 	//leaderId = CurrLeader(node.Cluster)
 
-	nclients := 100
+	nclients := 50
 	niters := 10
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
@@ -325,9 +324,9 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	//time.Sleep(3000 * time.Millisecond)
+	time.Sleep(3000 * time.Millisecond)
 	m, _ := clients[0].read("concWrite")
-	fmt.Println(string(m.Kind), "-", string(m.Contents))
+	//fmt.Println(string(m.Kind), "-", string(m.Contents))
 	// Ensure the contents are of the form "cl <i> 9"
 	// The last write of any client ends with " 9"
 	totEntr += niters * nclients
@@ -343,8 +342,8 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 // reduced to keep the testing time within limits.
 func TestRPC_ConcurrentCas(t *testing.T) {
 
-	nclients := 50
-	niters := 10
+	nclients := 5
+	niters := 5
 
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
@@ -410,6 +409,72 @@ func TestRPC_ConcurrentCas(t *testing.T) {
 	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), str)) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg.Kind = %d, msg.Contents=%s", m.Kind, m.Contents)
 	}
+}
+
+func Test_Shutdown(t *testing.T) {
+	cleanDB()
+	//Appending some entires.
+	cl := mkClient(t, leaderId)
+	defer cl.close()
+	nclients := 1
+	niters := 10
+	errCh := make(chan error, nclients)
+	ch := make(chan *Msg, nclients*niters) // channel for all replies
+	for i := 0; i < 1; i++ {
+		for j := 0; j < niters; j++ {
+			str := fmt.Sprintf("cl %d %d", i, j)
+			m, err := cl.write("concWrite", str, 0)
+			if err != nil {
+				errCh <- err
+				break
+			} else {
+				ch <- m
+			}
+		}
+	}
+	time.Sleep(100 * time.Millisecond) // give goroutines a chance
+
+	// There should be no errors
+	for i := 0; i < nclients*niters; i++ {
+		select {
+		case m := <-ch:
+			if m.Kind != 'O' {
+				t.Fatalf("Concurrent write failed with kind=%c", m.Kind)
+			}
+		case err := <-errCh:
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(3000 * time.Millisecond)
+	m, _ := cl.read("concWrite")
+	totEntr += niters * nclients
+	str := " " + strconv.Itoa(niters-1)
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), str)) {
+		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
+	}
+
+	cmds[leaderId+1].Process.Kill()
+	time.Sleep(10 * time.Second)
+
+	data := "chk alive"
+	m, err := cl.write("alive", data, 0)
+	if err == nil && m.Kind == 'R' {
+		fmt.Println("...")
+	}
+	if err == nil && m.Kind == 'O' {
+		t.Fatalf("Shudown fail")
+	}
+}
+
+func Test_Restore(t *testing.T) {
+	cmds[leaderId+1] = exec.Command("./server", strconv.Itoa(leaderId+1))
+	err := cmds[leaderId+1].Start()
+	cmds[leaderId+1].Stdout = os.Stdout
+	cmds[leaderId+1].Stderr = os.Stderr
+	if err != nil {
+		t.Fatalf("Failed to restart server")
+	}
+	time.Sleep(10 * time.Second)
 }
 
 /*--------------------------------|Utility functions|--------------------------------------*/
@@ -547,6 +612,10 @@ func parseFirst(line string) (msg *Msg, err error) {
 		msg.Kind = 'M'
 	case "ERR_INTERNAL":
 		msg.Kind = 'I'
+	case "ERR_REDIRECT":
+		msg.Kind = 'R'
+		id, _ := strconv.Atoi(fields[0])
+		msg.Numbytes = id
 	default:
 		err = errors.New("Unknown response " + fields[0])
 	}
@@ -614,6 +683,8 @@ func printDB(myRaft raft.Raft, len int64) {
 
 func cleanDB() {
 	os.RemoveAll("./log")
+	os.RemoveAll("./state")
+
 }
 
 func getAddress(myId int) string {
@@ -639,6 +710,7 @@ func getAddress(myId int) string {
 	return port
 }
 
+/*
 func mkClient(t *testing.T, id int) *Client {
 	var client *Client
 	raddr, err := net.ResolveTCPAddr("tcp", handlr.Servers[id].Address)
@@ -653,13 +725,15 @@ func mkClient(t *testing.T, id int) *Client {
 	}
 	return client
 }
+*/
 
-/*
 func mkClient(t *testing.T, id int) *Client {
 	var client *Client
+	//fmt.Println(getAddress(id + 1))
 	raddr, err := net.ResolveTCPAddr("tcp", getAddress(id+1))
 	if err == nil {
 		conn, err := net.DialTCP("tcp", nil, raddr)
+		//fmt.Println(err)
 		if err == nil {
 			client = &Client{conn: conn, reader: bufio.NewReader(conn)}
 		}
@@ -669,7 +743,6 @@ func mkClient(t *testing.T, id int) *Client {
 	}
 	return client
 }
-*/
 
 func expect(t *testing.T, response *Msg, expected *Msg, errstr string, err error) {
 	//fmt.Println("$$$$$$$$$$")
