@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cs733-iitb/cluster"
-	"github.com/cs733-iitb/cluster/mock"
-	"github.com/cs733-iitb/log"
+	"github.com/saurabhjambhule/cs733/assignment4/cluster"
+	"github.com/saurabhjambhule/cs733/assignment4/cluster/mock"
+	"github.com/saurabhjambhule/cs733/assignment4/log"
 	"github.com/saurabhjambhule/cs733/assignment4/raft/sm"
 )
 

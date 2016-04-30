@@ -1,8 +1,8 @@
 {"Details":[
-	{"Id": 1, "LogDir": "log/db_1", "StDir": "state/st_1", "ElectionTimeout": 1, "HeartbeatTimeout": 75},
-	{"Id": 2, "LogDir": "log/db_2", "StDir": "state/st_2", "ElectionTimeout": 180, "HeartbeatTimeout": 75},
-	{"Id": 3, "LogDir": "log/db_3", "StDir": "state/st_3", "ElectionTimeout": 210, "HeartbeatTimeout": 75},
-	{"Id": 4, "LogDir": "log/db_4", "StDir": "state/st_4", "ElectionTimeout": 270, "HeartbeatTimeout": 75},
-	{"Id": 5, "LogDir": "log/db_5", "StDir": "state/st_5", "ElectionTimeout": 300, "HeartbeatTimeout": 75}
+	{"Id": 1, "LogDir": "logg/db_1", "StDir": "state/st_1", "ElectionTimeout": 1, "HeartbeatTimeout": 75},
+	{"Id": 2, "LogDir": "logg/db_2", "StDir": "state/st_2", "ElectionTimeout": 180, "HeartbeatTimeout": 75},
+	{"Id": 3, "LogDir": "logg/db_3", "StDir": "state/st_3", "ElectionTimeout": 210, "HeartbeatTimeout": 75},
+	{"Id": 4, "LogDir": "logg/db_4", "StDir": "state/st_4", "ElectionTimeout": 270, "HeartbeatTimeout": 75},
+	{"Id": 5, "LogDir": "logg/db_5", "StDir": "state/st_5", "ElectionTimeout": 300, "HeartbeatTimeout": 75}
 	]
 }
