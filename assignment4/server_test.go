@@ -616,8 +616,8 @@ func CurrLeader(Cluster []*raft.RaftMachine) int {
 }
 
 func cleanDB() {
-	os.RemoveAll("./log")
-	os.RemoveAll("./state")
+	os.RemoveAll("./logDir")
+	os.RemoveAll("./stateDir")
 
 }
 

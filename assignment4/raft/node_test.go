@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saurabhjambhule/cs733/assignment4/cluster"
-	"github.com/saurabhjambhule/cs733/assignment4/cluster/mock"
+	"github.com/saurabhjambhule/cs733/assignment4/raft/cluster"
+	"github.com/saurabhjambhule/cs733/assignment4/raft/cluster/mock"
 
 	"github.com/saurabhjambhule/cs733/assignment4/raft/sm"
 )
@@ -176,8 +176,8 @@ func expectMatch(t *testing.T, id int, str string, str1 string) {
 }
 
 func cleanDB() {
-	os.RemoveAll("./log")
-	os.RemoveAll("./state")
+	os.RemoveAll("./logDir")
+	os.RemoveAll("./stateDir")
 
 }
 
